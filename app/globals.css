@@ -1,0 +1,637 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ——— Design system: Deep Slate & Surgical Teal (single source of truth) ——— */
+:root {
+  --bg-deep: #0f172a;
+  --bg-surface: #0f172a;
+  --bg-elevated: #1e293b;
+  --bg-muted: rgba(30, 41, 59, 0.6);
+  --accent: #2dd4bf;
+  --accent-dim: rgba(45, 212, 191, 0.15);
+  --accent-glow: rgba(45, 212, 191, 0.25);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --shadow-card: 0 4px 24px -4px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 32px -4px var(--accent-glow);
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  @apply font-body text-slate-100 antialiased;
+  background-color: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Night Shift: elite dark mode */
+.bg-slate-950 {
+  background-color: var(--bg-deep);
+}
+
+/* App background: subtle gradient for depth */
+.app-bg {
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(45, 212, 191, 0.06), transparent 50%),
+    var(--bg-deep);
+}
+
+/* Glassmorphism: sidebar and cards (premium) */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+.glass-card {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.glass-card:focus-within {
+  border-color: rgba(45, 212, 191, 0.3);
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.1);
+}
+
+/* Auth cards: glassmorphism with thin white border (Surgical Auth design system) */
+.glass-auth-card {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
+}
+
+.resume-surface {
+  background: radial-gradient(circle at top left, rgba(45, 212, 191, 0.08), transparent),
+    radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
+}
+
+.resume-paper {
+  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.03), transparent),
+    #f9fafb;
+}
+
+/* ——— Bespoke Executive Resume ($500 typography) ——— */
+.exec-name {
+  font-family: var(--font-playfair), "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 32pt;
+  line-height: 1.2;
+  color: #0f172a;
+}
+.exec-section-header {
+  font-family: var(--font-playfair), "Playfair Display", serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10pt;
+  color: #0f172a;
+}
+.exec-body {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 10pt;
+  line-height: 1.6;
+  color: #0f172a;
+}
+.exec-accent {
+  color: #2dd4bf;
+}
+.exec-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #2dd4bf 15%,
+    #2dd4bf 85%,
+    transparent 100%
+  );
+  opacity: 0.9;
+}
+.exec-bullet-dash {
+  flex-shrink: 0;
+  width: 0.4em;
+  height: 0;
+  border-bottom: 2px solid #2dd4bf;
+  margin-top: 0.65em;
+  margin-right: 0.5rem;
+}
+.exec-ghost {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 9pt;
+}
+.exec-contact-dot {
+  color: #2dd4bf;
+  font-weight: 700;
+  user-select: none;
+}
+
+.theme-surgeon .resume-header-name {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.theme-surgeon .resume-header-title {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.theme-partner .resume-header-name,
+.theme-partner .resume-header-title {
+  font-family: var(--font-playfair), "Playfair Display", "Times New Roman", serif;
+}
+
+.theme-partner .resume-accent-line {
+  background-color: #1e293b;
+}
+
+.theme-innovator .resume-header-name,
+.theme-innovator .resume-header-title {
+  font-family: var(--font-montserrat), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.theme-innovator .resume-paper {
+  background: #f3f4f6;
+}
+
+.theme-innovator .resume-layout {
+  display: grid;
+  grid-template-columns: 0.9fr 2fr;
+  gap: 1.75rem;
+}
+
+.resume-section-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.resume-body {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  font-size: 10pt;
+  line-height: 1.6;
+}
+
+.resume-section-header {
+  letter-spacing: 0.1em;
+}
+
+.resume-bullet-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.resume-bullet-list li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.resume-bullet-marker {
+  margin-top: 0.35em;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 2px;
+  background-color: #0f172a;
+  flex-shrink: 0;
+}
+
+.resume-bullet-text {
+  flex: 1;
+}
+
+.resume-contact-blur {
+  filter: blur(1.2px);
+}
+
+.resume-watermark {
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+/* Executive preview watermark (unpaid) */
+.exec-watermark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+.exec-watermark span {
+  font-family: var(--font-playfair), serif;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: rgba(15, 23, 42, 0.08);
+  transform: rotate(-18deg);
+  white-space: nowrap;
+}
+
+/* ——— Operating Table / Builder: Executive template ——— */
+.exec-template-paper {
+  background: #fafafa;
+  color: #0f172a;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  position: relative;
+  min-height: 420px;
+}
+.exec-template-paper .exec-name {
+  font-family: var(--font-playfair), "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 32pt;
+  line-height: 1.2;
+  color: #0f172a;
+}
+.exec-template-paper .exec-body {
+  font-size: 10pt;
+  line-height: 1.6;
+  color: #0f172a;
+}
+.exec-template-watermark-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  font-family: var(--font-playfair), serif;
+  font-size: 8pt;
+  letter-spacing: 0.12em;
+  color: rgba(15, 23, 42, 0.2);
+}
+@media print {
+  .exec-template-watermark-bottom {
+    display: none;
+  }
+}
+
+.recruiter-heat-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0.12) 0%,
+    rgba(251, 191, 36, 0.04) 50%,
+    transparent 100%
+  );
+  opacity: 0.9;
+}
+
+.recruiter-heat-zone-header .recruiter-heat-overlay {
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0.18) 0%,
+    rgba(251, 191, 36, 0.06) 100%
+  );
+}
+
+.recruiter-heat-zone-job .recruiter-heat-overlay,
+.recruiter-heat-zone-skills .recruiter-heat-overlay {
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0.14) 0%,
+    rgba(251, 191, 36, 0.03) 100%
+  );
+}
+
+.proposal-body .proposal-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.proposal-cta {
+  break-before: auto;
+}
+
+.proposal-pricing-table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.proposal-methodology {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@media print {
+  .proposal-print-wrapper > * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  .proposal-cover {
+    page-break-after: always;
+    min-height: 0;
+  }
+  .proposal-page-header {
+    color: #64748b;
+  }
+  .proposal-page-number::after {
+    content: " · Page " counter(page) " of " counter(pages);
+  }
+}
+
+.sharpen-glimmer {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(45, 212, 191, 0.2) 45%,
+    rgba(45, 212, 191, 0.35) 50%,
+    rgba(45, 212, 191, 0.2) 55%,
+    transparent 65%,
+    transparent 100%
+  );
+  animation: glimmer-sweep 0.6s ease-out forwards;
+}
+
+@keyframes glimmer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Premium button glimmer — subtle moving light */
+.btn-glimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-glimmer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 40%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: btn-glimmer-shine 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes btn-glimmer-shine {
+  0%, 100% { background-position: 200% 0; }
+  50% { background-position: -200% 0; }
+}
+
+/* Surgical Pulse — teal ring expand/contract for loading */
+.surgical-pulse {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(20, 184, 166, 0.5);
+  animation: surgical-pulse-ring 1.2s ease-in-out infinite;
+}
+
+.surgical-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(20, 184, 166, 0.25);
+  animation: surgical-pulse-ring 1.2s ease-in-out infinite 0.4s;
+}
+
+@keyframes surgical-pulse-ring {
+  0%, 100% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.2;
+  }
+}
+
+/* Midnight & Gold — Firm Proposal luxury theme */
+.theme-firm-luxury {
+  --accent: #d4af37;
+  --accent-dim: rgba(212, 175, 55, 0.15);
+  --bg-midnight: #0a0a0f;
+}
+.theme-firm-luxury .text-surgicalTeal,
+.theme-firm-luxury [class*="surgicalTeal"] {
+  color: var(--accent) !important;
+}
+.theme-firm-luxury .border-surgicalTeal\/70,
+.theme-firm-luxury .border-surgicalTeal\/60 {
+  border-color: rgba(212, 175, 55, 0.5) !important;
+}
+.theme-firm-luxury .bg-surgicalTeal\/10 {
+  background-color: var(--accent-dim) !important;
+}
+.theme-firm-luxury .bg-slate-950 {
+  background-color: var(--bg-midnight) !important;
+}
+
+/* Low Light — reduced eye strain */
+.low-light {
+  --bg-soft: #1a1f2e;
+  --text-soft: #94a3b8;
+}
+.low-light body,
+.low-light.bg-slate-950 {
+  background-color: var(--bg-soft) !important;
+}
+.low-light .text-slate-100 {
+  color: #cbd5e1 !important;
+}
+.low-light .text-slate-400 {
+  color: var(--text-soft) !important;
+}
+.low-light .glass-panel,
+.low-light .glass-card {
+  background: rgba(26, 31, 46, 0.7) !important;
+}
+
+/* Scanning laser glimmer — travels across text */
+.sharpen-glimmer-laser {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.sharpen-glimmer-laser::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(45, 212, 191, 0.9),
+    rgba(45, 212, 191, 0.9),
+    transparent
+  );
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.8);
+  animation: laser-sweep 0.8s ease-in-out forwards;
+}
+@keyframes laser-sweep {
+  from { transform: translateX(-10%); }
+  to { transform: translateX(110%); }
+}
+
+/* Success pulse — 100% health badge */
+.success-pulse {
+  animation: success-pulse-scale 0.6s ease-out;
+}
+@keyframes success-pulse-scale {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.95; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.badge-glow {
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.4);
+}
+
+/* Bento — rounded digestible blocks (premium) */
+.bento-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(12px);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.bento-card:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+/* Premium form inputs: consistent focus ring (theme) */
+.input-premium {
+  @apply w-full rounded-xl border bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition-colors duration-150;
+  border-color: rgba(51, 65, 85, 0.8);
+}
+.input-premium:focus {
+  outline: none;
+  border-color: rgba(45, 212, 191, 0.5);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+}
+
+/* Pill nav (active state) */
+.nav-pill {
+  @apply rounded-full px-4 py-2 text-sm font-medium transition-all duration-200;
+}
+.nav-pill-active {
+  @apply bg-surgicalTeal/15 text-surgicalTeal border border-surgicalTeal/30;
+}
+.nav-pill-inactive {
+  @apply text-slate-400 border border-transparent hover:text-slate-200 hover:bg-white/5;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0.75in;
+  }
+
+  body {
+    margin: 0;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-resume-page {
+    margin: 0;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: auto;
+    min-height: auto;
+    page-break-after: always;
+  }
+
+  .resume-paper {
+    background: #ffffff !important;
+  }
+}
+
+/* Print perfection: Surgical Teal and Playfair preserved, no margins cut off */
+@media print {
+  @page {
+    size: A4;
+    margin: 0.5in;
+  }
+
+  body {
+    margin: 0;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-resume-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+    page-break-after: always;
+    background: #fff !important;
+  }
+
+  .exec-name,
+  .exec-section-header {
+    font-family: "Playfair Display", Georgia, serif !important;
+    color: #0f172a !important;
+  }
+  .exec-body {
+    font-family: Inter, system-ui, sans-serif !important;
+    color: #0f172a !important;
+  }
+  .exec-divider {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .exec-bullet-dash {
+    border-bottom-color: #2dd4bf !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .exec-contact-dot {
+    color: #2dd4bf !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .exec-watermark,
+  .resume-watermark {
+    display: none !important;
+  }
+}
+
+
