@@ -25,6 +25,9 @@ export type PublicProfileSnapshot = {
   experience?: string;
   sharpened?: string;
   skills?: string;
+  education?: string;
+  projects?: string;
+  certification?: string;
 };
 
 async function getAuthUser(request: NextRequest): Promise<{ userId: string } | null> {

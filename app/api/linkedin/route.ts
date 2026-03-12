@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
 import { sanitizeForAI, sanitizeShortField } from "@/lib/sanitize";
 import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 const SYSTEM =
-  "You are a LinkedIn Personal Branding Expert. You generate SEO-optimized, recruiter-friendly profile content that maximizes visibility and conversions. Output only valid JSON with the exact keys requested. No markdown code fences.";
+  "You are a LinkedIn personal branding expert. Generate SEO-friendly, recruiter-focused profile content. Output only valid JSON with the exact keys requested; no markdown. Write the About and headlines in a natural, human voice — varied sentence length and rhythm so content reads like a real profile and performs well on AI detection.";
 
 type LinkedInBody = {
   fullName?: string;
@@ -64,26 +64,20 @@ Output only the JSON object.`;
 }
 
 async function callGemini(prompt: string, humanize: boolean): Promise<LinkedInResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getGeminiKey();
   if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
-  const systemInstruction = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
-    systemInstruction,
-  });
-  const result = await model.generateContent([prompt]);
-  const text = result.response.text().trim();
+  const systemInstruction = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
+  const text = await generateWithGeminiFailover(apiKey, { prompt, systemInstruction });
   return parseResponse(text);
 }
 
 async function callGroq(prompt: string, humanize: boolean): Promise<LinkedInResponse> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
-  const systemContent = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
+  const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
   const groq = new Groq({ apiKey });
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model: "llama-3.3-70b-versatile",
     temperature: 0.4,
     max_tokens: 2048,
     messages: [

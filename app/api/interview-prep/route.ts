@@ -1,30 +1,20 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits } from "@/lib/credits";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { validateAndDeduct } from "@/lib/credits";
 import { sanitizeForAI, sanitizeShortField } from "@/lib/sanitize";
 import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 export type QuestionCategory = "expert_check" | "cultural_fit" | "professional_story" | "visionary";
 
-const SYSTEM = `You are an expert interview coach and former senior recruiter. You create a Total Interview Prediction: 10 questions in 4 categories, each with a bespoke STAR answer script from the candidate's real experience. Output only valid JSON.
+const SYSTEM = `You are an expert interview coach and former senior recruiter. Create 10 questions in 4 categories with STAR answer scripts from the candidate's real experience. Output only valid JSON.
 
-QUESTION CATEGORIES (exactly 10 questions total):
-1. "expert_check" (3 questions) — The Expert Check / Technical. Base each question on one of the TOP 3 hard skills or technologies explicitly required in the job description. E.g. "How have you used [X technology] in production?", "Describe a technical decision you made under pressure."
-2. "cultural_fit" (3 questions) — The Cultural Fit / Behavioral. Base on the company's vibe, values, or culture mentioned in the JD (e.g. "fast-paced", "ownership", "customer-first"). E.g. "Tell me about a time you disagreed with a manager.", "Describe how you handled a tight deadline."
-3. "professional_story" (3 questions) — The Professional Story / Resume. Questions about specific high-impact projects or roles from their Resume or LinkedIn. Reference real projects, metrics, or companies from their experience. E.g. "Walk me through the [Project X] you led at [Company]."
-4. "visionary" (1 question) — The Visionary / Future-focused. "Where do you see yourself in this firm in 3 years?" or similar, tailored to the seniority of the role (e.g. IC vs lead vs exec).
+CATEGORIES (10 total): expert_check (3), cultural_fit (3), professional_story (3), visionary (1). expert_check = top 3 hard skills from JD. cultural_fit = company values/vibe. professional_story = real projects from resume. visionary = where do you see yourself, tailored to role level.
 
-For EACH question provide:
-- "category": one of "expert_check" | "cultural_fit" | "professional_story" | "visionary"
-- "question": the question text
-- "winningAnswer": Bespoke answer script using the SURGICAL STAR method (Situation, Task, Action, Result). MUST use a real-world example from the candidate's Experience section — specific project, company, or outcome. 2-5 sentences.
-- "trap": Why the recruiter is asking (e.g. "They are testing your technical depth in React", "Checking if you take ownership").
-- "motive": What they are actually looking for (e.g. "They aren't asking about your weakness; they are testing your self-awareness and growth mindset.", "They want to see how you align with company values.").
-- "strategy": One short sentence — the strategy or tip for answering (e.g. "Lead with the result, then briefly give context.", "Use one concrete example from your resume.").
+For EACH question: "category", "question", "winningAnswer" (STAR from real experience; 2-5 sentences; write as if someone is speaking — natural, varied length, not a script read off a page), "trap", "motive", "strategy".
 
-Also output "elevatorPitch": a 30-second "Tell me about yourself" script blending their resume achievements with their LinkedIn brand. This is the 100% guaranteed first question — put it first in your thinking.`;
+Also output "elevatorPitch": 30-second "Tell me about yourself" blending resume + LinkedIn. Write it like natural speech — short and long sentences, how a confident candidate would actually say it. This is the first question; make it sound human so it passes AI detection.`;
 
 type Body = {
   sharpenedResume?: string;
@@ -121,22 +111,33 @@ function parseResponse(text: string): InterviewPrepResponse {
 
 export async function POST(req: Request) {
   try {
-    const unitCheck = await requireUnits(req, "INTERVIEW_PREP");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
-    const creditsRemaining = unitCheck.creditsRemaining;
-
     const body = (await req.json()) as Body;
     const prompt = buildPrompt(body);
     const humanize = Boolean(body.humanize);
-    const systemContent = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
+    const unitCheck = await validateAndDeduct(req, "INTERVIEW_PREP", { humanize });
+    if ("unitResponse" in unitCheck && unitCheck.unitResponse) return unitCheck.unitResponse;
+    const creditsRemaining = unitCheck.creditsRemaining;
+    const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
 
     const groqKey = getGroqKey();
     const geminiKey = getGeminiKey();
 
+    try {
+      if (geminiKey) {
+        const raw = await generateWithGeminiFailover(geminiKey, {
+          prompt,
+          systemInstruction: systemContent,
+        });
+        return NextResponse.json({ ...parseResponse(raw), creditsRemaining });
+      }
+    } catch {
+      // Fall through to Groq
+    }
+
     if (groqKey) {
       const groq = new Groq({ apiKey: groqKey });
       const completion = await groq.chat.completions.create({
-        model: "llama-3.1-70b-versatile",
+        model: "llama-3.3-70b-versatile",
         temperature: 0.35,
         max_tokens: 8192,
         messages: [
@@ -145,17 +146,6 @@ export async function POST(req: Request) {
         ],
       });
       const raw = (completion.choices[0]?.message?.content ?? "").trim();
-      return NextResponse.json({ ...parseResponse(raw), creditsRemaining });
-    }
-
-    if (geminiKey) {
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro",
-        systemInstruction: systemContent,
-      });
-      const result = await model.generateContent([prompt]);
-      const raw = result.response.text().trim();
       return NextResponse.json({ ...parseResponse(raw), creditsRemaining });
     }
 

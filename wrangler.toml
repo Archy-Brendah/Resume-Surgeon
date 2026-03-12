@@ -1,0 +1,15 @@
+name = "resume-surgeon"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# When deploying to Cloudflare Pages, this tells Wrangler where the static output lives.
+# next-on-pages will generate a .vercel/output directory.
+pages_build_output_dir = ".vercel/output/static"
+
+# Add any bindings you need below (KV, R2, D1, etc.).
+# Example:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "my-database-name"
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+

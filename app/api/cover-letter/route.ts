@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits } from "@/lib/credits";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { validateAndDeduct } from "@/lib/credits";
 import { sanitizeForAI, sanitizeShortField } from "@/lib/sanitize";
-import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { getGeminiKey, getGroqKey, GROQ_MAIN_MODEL } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 const SYSTEM =
-  "You are an expert executive writer. Write high-stakes, sophisticated cover letters. Use a non-robotic, human tone. Output exactly 3 paragraphs: Paragraph 1 = The Hook (why I'm the only choice). Paragraph 2 = The Proof (specific achievements from the resume that match the job description). Paragraph 3 = The Call to Action. No greetings or sign-offs—only the three body paragraphs. Match the requested tone.";
+  "You are an expert executive writer. Write high-stakes, sophisticated cover letters that sound like a real candidate wrote them. Output exactly 3 paragraphs: (1) The Hook — why I'm the right choice. (2) The Proof — specific achievements from the resume that match the job. (3) The Call to Action. No salutation or sign-off; only the three body paragraphs. Vary sentence length: mix short, direct sentences with longer ones. Match the requested tone; avoid template-like or robotic phrasing so the letter reads human and passes AI detection.";
 
 type Tone = "confident" | "professional" | "creative" | "humble";
 
@@ -31,31 +31,23 @@ function buildPrompt(body: CoverLetterBody): string {
     creative: "Engaging and memorable without being casual.",
     humble: "Grounded and collaborative; emphasize learning and impact.",
   };
-  return `Job description:\n${jd}\n\nCandidate resume / achievements (use these for proof):\n${resume}\n\nTone: ${toneGuide[tone]}\n\nWrite a 3-paragraph cover letter. Paragraph 1: The Hook (why I'm the only choice). Paragraph 2: The Proof (specific achievements from my resume that match the job). Paragraph 3: The Call to Action. Sophisticated, non-robotic tone. Output only the three paragraphs, no salutation or sign-off.`;
+  return `Job description:\n${jd}\n\nCandidate resume / achievements (use these for proof):\n${resume}\n\nTone: ${toneGuide[tone]}\n\nWrite a 3-paragraph cover letter. Paragraph 1: The Hook. Paragraph 2: The Proof (use real achievements from the resume). Paragraph 3: The Call to Action. Vary sentence length; sound like a real person. Output only the three paragraphs, no salutation or sign-off.`;
 }
 
 async function callGemini(prompt: string, humanize: boolean): Promise<string> {
   const apiKey = getGeminiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
-  const systemInstruction = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
-    systemInstruction,
-  });
-  const result = await model.generateContent([prompt]);
-  const text = result.response.text().trim();
-  if (!text) throw new Error("Gemini returned empty");
-  return text;
+  const systemInstruction = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
+  return generateWithGeminiFailover(apiKey, { prompt, systemInstruction });
 }
 
 async function callGroq(prompt: string, humanize: boolean): Promise<string> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
-  const systemContent = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
+  const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
   const groq = new Groq({ apiKey });
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model: GROQ_MAIN_MODEL,
     temperature: 0.5,
     max_tokens: 1024,
     messages: [
@@ -71,12 +63,19 @@ async function callGroq(prompt: string, humanize: boolean): Promise<string> {
 
 export async function POST(req: Request) {
   try {
-    const unitCheck = await requireUnits(req, "COVER_LETTER");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
-    const creditsRemaining = unitCheck.creditsRemaining;
-
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return NextResponse.json(
+        { error: "Sign in required to generate a cover letter." },
+        { status: 401 }
+      );
+    }
     const body = (await req.json()) as CoverLetterBody;
     const humanize = Boolean(body.humanize);
+    const unitCheck = await validateAndDeduct(req, "COVER_LETTER", { humanize });
+    if ("unitResponse" in unitCheck && unitCheck.unitResponse) return unitCheck.unitResponse;
+    const creditsRemaining = unitCheck.creditsRemaining;
     const prompt = buildPrompt(body);
     let text: string;
     try {

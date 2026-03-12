@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits } from "@/lib/credits";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { validateAndDeduct } from "@/lib/credits";
 import { sanitizeForAI, sanitizeShortField } from "@/lib/sanitize";
 import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
-const SYSTEM = `You are an expert career coach and follow-up email writer. You help candidates avoid being "ghosted" after applying by writing professional, warm, and strategic follow-up emails tailored to the specific job and company.
+const SYSTEM = `You are an expert career coach writing follow-up emails so candidates don't get ghosted. Professional, warm, strategic. Output only valid JSON with keys gentleCheckIn, valueAdd, closeTheLoop (each value = full email body; use \\n for line breaks).
 
-Output only valid JSON with exactly these three keys (each value is the full email body as a single string; use \\n for line breaks within the email):
-- "gentleCheckIn": The 48-Hour Gentle Nudge. Short, polite, one brief paragraph. Reference that they applied recently, reiterate interest in the role, and ask if there's any additional information they can provide. No pressure. Professional but human.
-- "valueAdd": The 7-Day Value-Add. Slightly longer. They're following up and suggesting a solution to a problem mentioned in the JD, or sharing a relevant project/insight that shows continued engagement. One or two short paragraphs. Clear subject-line suggestion in the first line if possible, then the body.
-- "closeTheLoop": The 14-Day Professional Close. Professional and graceful final check-in. Acknowledge that timelines shift, reiterate interest once more, and say they're happy to be considered for future opportunities. Keeps the door open without sounding desperate. One or two short paragraphs.`;
+gentleCheckIn: 48-hour nudge. Short, polite. Reiterate interest; ask if they need anything else. Sound like a real person — varied sentence length, no template phrasing.
+valueAdd: 7-day follow-up. Suggest a solution or share a relevant insight. One or two paragraphs. Natural, human tone so it passes AI detection.
+closeTheLoop: 14-day professional close. Timelines shift; reiterate interest; happy to be considered later. One or two paragraphs. Warm but not desperate.`;
 
 type Body = {
   jobDescription: string;
@@ -68,10 +67,6 @@ function parseResponse(text: string): Output {
 
 export async function POST(req: Request) {
   try {
-    const unitCheck = await requireUnits(req, "FOLLOW_UP");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
-    const creditsRemaining = unitCheck.creditsRemaining;
-
     const body = (await req.json()) as Body;
     const jobDescription = sanitizeForAI(body.jobDescription);
     if (!jobDescription) {
@@ -82,16 +77,32 @@ export async function POST(req: Request) {
     }
 
     const humanize = Boolean(body.humanize);
+    const unitCheck = await validateAndDeduct(req, "FOLLOW_UP", { humanize });
+    if ("unitResponse" in unitCheck && unitCheck.unitResponse) return unitCheck.unitResponse;
+    const creditsRemaining = unitCheck.creditsRemaining;
     const prompt = buildPrompt(body);
-    const systemContent = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
+    const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
 
     const groqKey = getGroqKey();
     const geminiKey = getGeminiKey();
 
+    try {
+      if (geminiKey) {
+        const raw = await generateWithGeminiFailover(geminiKey, {
+          prompt,
+          systemInstruction: systemContent,
+        });
+        const out = parseResponse(raw);
+        return NextResponse.json({ ...out, creditsRemaining });
+      }
+    } catch {
+      // Fall through to Groq
+    }
+
     if (groqKey) {
       const groq = new Groq({ apiKey: groqKey });
       const completion = await groq.chat.completions.create({
-        model: "llama-3.1-70b-versatile",
+        model: "llama-3.3-70b-versatile",
         temperature: 0.4,
         max_tokens: 2048,
         messages: [
@@ -100,18 +111,6 @@ export async function POST(req: Request) {
         ],
       });
       const raw = completion.choices[0]?.message?.content?.trim() ?? "";
-      const out = parseResponse(raw);
-      return NextResponse.json({ ...out, creditsRemaining });
-    }
-
-    if (geminiKey) {
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro",
-        systemInstruction: systemContent,
-      });
-      const result = await model.generateContent([prompt]);
-      const raw = result.response.text().trim();
       const out = parseResponse(raw);
       return NextResponse.json({ ...out, creditsRemaining });
     }

@@ -71,18 +71,20 @@ export default function SignupPage() {
   if (confirmSent) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-        <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 text-center shadow-card">
+        <div className="w-full max-w-sm rounded-3xl glass-auth-card p-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-            <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+              <Scissors className="h-6 w-6 text-neonGreenDark" aria-hidden />
+            </div>
+            <h1 className="text-xl font-semibold text-[#1c1917] font-display">Resume Surgeon</h1>
           </div>
-          <p className="text-sm font-medium text-slate-200 mb-1">Confirm your email</p>
+          <p className="text-sm font-medium text-slate-800 mb-1">Confirm your email</p>
           <p className="text-xs text-slate-500 mb-6">
-            We sent a confirmation link to <span className="text-slate-300">{email}</span>. Click it to activate your account. Your profile will be created automatically with a free tier.
+            We sent a confirmation link to <span className="text-slate-700">{email}</span>. Click it to activate your account. Your profile will be created automatically with a free tier.
           </p>
           <Link
             href="/login"
-            className="inline-block text-sm text-surgicalTeal hover:underline focus:outline-none focus:ring-2 focus:ring-surgicalTeal/30 rounded"
+            className="inline-block text-sm text-neonGreenDark hover:underline focus:outline-none focus:ring-2 focus:ring-surgicalTeal/30 rounded"
           >
             Back to sign in
           </Link>
@@ -93,12 +95,14 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-      <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 shadow-card">
+        <div className="w-full max-w-sm rounded-3xl glass-auth-card p-8">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-          <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+          <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+            <Scissors className="h-6 w-6 text-neonGreenDark" aria-hidden />
+          </div>
+          <h1 className="text-xl font-semibold text-[#1c1917] font-display">Resume Surgeon</h1>
         </div>
-        <h2 className="text-sm font-medium text-slate-300 uppercase tracking-wider mb-4">
+        <h2 className="text-base font-semibold text-slate-800 uppercase tracking-wider mb-4">
           Create account
         </h2>
 
@@ -106,7 +110,7 @@ export default function SignupPage() {
           type="button"
           onClick={handleGoogleSignUp}
           disabled={googleLoading}
-          className="w-full rounded-xl border border-white/10 bg-slate-800/40 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800/60 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mb-4"
+          className="w-full rounded-xl btn-secondary-surgical py-3 text-base font-semibold disabled:opacity-50 flex items-center justify-center gap-2 mb-4"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -128,7 +132,7 @@ export default function SignupPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="signup-email" className="block text-xs text-slate-400 mb-1.5">
+            <label htmlFor="signup-email" className="block text-sm font-medium text-slate-700 mb-1.5">
               Email
             </label>
             <input
@@ -139,11 +143,11 @@ export default function SignupPage() {
               required
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/60 focus:outline-none focus:ring-2 focus:ring-surgicalTeal/20"
+              className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
           <div>
-            <label htmlFor="signup-password" className="block text-xs text-slate-400 mb-1.5">
+            <label htmlFor="signup-password" className="block text-sm font-medium text-slate-700 mb-1.5">
               Password
             </label>
             <input
@@ -155,22 +159,22 @@ export default function SignupPage() {
               minLength={6}
               placeholder="At least 6 characters"
               autoComplete="new-password"
-              className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/60 focus:outline-none focus:ring-2 focus:ring-surgicalTeal/20"
+              className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
           {error && <p className="text-xs text-rose-400" role="alert">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl border border-surgicalTeal/60 bg-surgicalTeal/10 py-2.5 text-sm font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50 transition-colors"
+            className="w-full rounded-xl btn-primary-surgical py-3 text-base font-semibold disabled:opacity-50"
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
+        <p className="mt-4 text-center text-sm text-slate-600">
           Already have an account?{" "}
-          <Link href="/login" className="text-surgicalTeal hover:underline font-medium">
+          <Link href="/login" className="text-neonGreenDark hover:underline font-semibold">
             Sign in
           </Link>
         </p>

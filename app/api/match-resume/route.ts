@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits, getUserIdFromRequest, refundUnits } from "@/lib/credits";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { getCost } from "@/lib/su-costs";
+import { processAiUsageWithWait, getUserIdFromRequest, refundUnits } from "@/lib/credits";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { sanitizeForAI } from "@/lib/sanitize";
 import { getGroqKey } from "@/lib/ai-keys";
@@ -76,6 +77,9 @@ function extractJsonFromResponse(text: string): MatchResponse | null {
 
 export async function POST(request: Request) {
   try {
+    const body = (await request.json()) as MatchResumeBody;
+    const { resumeText = "", jobDescription = "", humanize = false } = body;
+
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -87,12 +91,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const unitCheck = await requireUnits(request, "MATCH");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
+    const baseCost = getCost("MATCH");
+    const cost = humanize ? Math.ceil(baseCost * 1.2) : baseCost;
+    const unitCheck = await processAiUsageWithWait(request, cost);
+    if ("unitResponse" in unitCheck && unitCheck.unitResponse) return unitCheck.unitResponse;
     const creditsRemaining = unitCheck.creditsRemaining;
-
-    const body = (await request.json()) as MatchResumeBody;
-    const { resumeText = "", jobDescription = "", humanize = false } = body;
 
     const jdTrimmed = sanitizeForAI(jobDescription);
     const resumeTrimmed = sanitizeForAI(resumeText);
@@ -112,10 +115,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const systemContent = humanize ? `${GROQ_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : GROQ_SYSTEM;
+    const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${GROQ_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${GROQ_SYSTEM}`;
     const groq = new Groq({ apiKey });
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-70b-versatile",
+      model: "llama-3.3-70b-versatile",
       temperature: 0.3,
       max_tokens: 1024,
       messages: [
@@ -161,7 +164,7 @@ export async function POST(request: Request) {
     });
   } catch (e) {
     console.error("match-resume error:", e);
-    await refundUnits(request, 2);
+    await refundUnits(request, getCost("MATCH"));
     return NextResponse.json(
       { error: "Failed to analyze match" },
       { status: 500 }

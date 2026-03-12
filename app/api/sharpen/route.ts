@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits, getUserIdFromRequest, refundUnits } from "@/lib/credits";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { getCost } from "@/lib/su-costs";
+import {
+  getUserIdFromRequest,
+  refundUnits,
+  checkGlobalGuard,
+  deductSurgicalUnits,
+  getCreditsFromRequest,
+  REFILL_PAYLOAD,
+} from "@/lib/credits";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { sanitizeForAI } from "@/lib/sanitize";
-import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { getGeminiKey, getGroqKey, GROQ_MAIN_MODEL, GROQ_FALLBACK_MODEL } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 const BASE_PROMPT =
-  "You are an Expert Technical Recruiter. Compare the user's resume bullet point against the provided Job Description. Rewrite the bullet point to highlight the exact keywords and skills the employer is looking for, while maintaining 100% honesty. Use the STAR method.";
+  "You are an Expert Technical Recruiter. Rewrite the candidate's experience bullet points so they are clear, outcome-focused, and aligned with the job description. Keep 100% honesty. Use the STAR method. Output format: one bullet per line, no numbering or extra labels. The result will be pasted directly into a resume, so preserve the same number of bullets and output only the bullet text (one achievement per line).";
 
 type SharpenRequestBody = {
   text: string;
@@ -26,26 +34,16 @@ async function callGemini(
   const apiKey = getGeminiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
-  const systemPrompt = humanize ? `${BASE_PROMPT}\n\n${HUMANIZE_INSTRUCTION}` : BASE_PROMPT;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
+  const systemPrompt = humanize
+    ? `${BASE_HUMAN_LIKE}\n\n${BASE_PROMPT}\n\n${HUMANIZE_INSTRUCTION}`
+    : `${BASE_HUMAN_LIKE}\n\n${BASE_PROMPT}`;
+  const jd = jobDescription?.trim();
+  const prompt = `Job Description:\n${jd || "(not provided)"}\n\nCandidate bullet(s):\n${text}\n\nTask: Rewrite the bullet point(s) to align tightly with the job description while staying fully truthful, using the STAR method and preserving the candidate's real responsibilities and outcomes.`;
+
+  const generated = await generateWithGeminiFailover(apiKey, {
+    prompt,
     systemInstruction: systemPrompt,
   });
-
-  const jd = jobDescription?.trim();
-
-  const result = await model.generateContent([
-    `Job Description:\n${jd || "(not provided)"}\n\nCandidate bullet(s):\n${text}\n\nTask: Rewrite the bullet point(s) to align tightly with the job description while staying fully truthful, using the STAR method and preserving the candidate's real responsibilities and outcomes.`,
-  ]);
-
-  const response = await result.response;
-  const generated = response.text().trim();
-
-  if (!generated) {
-    throw new Error("Gemini returned empty response");
-  }
-
   return { output: generated };
 }
 
@@ -53,16 +51,19 @@ async function callGroq(
   text: string,
   jobDescription?: string,
   humanize?: boolean,
+  model: string = GROQ_MAIN_MODEL,
 ): Promise<{ output: string }> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
   const groq = new Groq({ apiKey });
-  const systemContent = humanize ? `${BASE_PROMPT}\n\n${HUMANIZE_INSTRUCTION}` : BASE_PROMPT;
+  const systemContent = humanize
+    ? `${BASE_HUMAN_LIKE}\n\n${BASE_PROMPT}\n\n${HUMANIZE_INSTRUCTION}`
+    : `${BASE_HUMAN_LIKE}\n\n${BASE_PROMPT}`;
   const jd = jobDescription?.trim();
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model,
     temperature: 0.4,
     max_tokens: 512,
     messages: [
@@ -96,6 +97,11 @@ const SHARPEN_RATE_LIMIT = 10;
 
 export async function POST(req: Request) {
   try {
+    const body = (await req.json()) as SharpenRequestBody;
+    const text = sanitizeForAI(body?.text);
+    const jobDescription = sanitizeForAI(body?.jobDescription);
+    const humanize = Boolean(body?.humanize);
+
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -107,16 +113,28 @@ export async function POST(req: Request) {
       );
     }
 
-    const unitCheck = await requireUnits(req, "SHARPEN");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
-    const creditsRemaining = unitCheck.creditsRemaining;
+    const baseCost = getCost("SHARPEN");
+    const cost = humanize ? Math.ceil(baseCost * 1.2) : baseCost;
 
-    const body = (await req.json()) as SharpenRequestBody;
-    const text = sanitizeForAI(body?.text);
-    const jobDescription = sanitizeForAI(body?.jobDescription);
-    const humanize = Boolean(body?.humanize);
+    const guard = await checkGlobalGuard(req);
+    if (!guard.allowed) {
+      return NextResponse.json(
+        { error: guard.message ?? "Daily AI limit reached. Please try again later." },
+        { status: 503 }
+      );
+    }
+    const { userId: _uid, credits } = await getCreditsFromRequest(req);
+    if (credits < cost) {
+      return NextResponse.json(REFILL_PAYLOAD, { status: 402 });
+    }
+    const deductResult = await deductSurgicalUnits(req, cost);
+    if (!deductResult.ok || deductResult.creditsRemaining < 0) {
+      return NextResponse.json(REFILL_PAYLOAD, { status: 402 });
+    }
+    const creditsRemaining = deductResult.creditsRemaining;
 
     if (!text) {
+      await refundUnits(req, cost);
       return NextResponse.json(
         { error: "Missing text to sharpen" },
         { status: 400 },
@@ -126,23 +144,22 @@ export async function POST(req: Request) {
     let provider: Provider = "gemini";
     let output: string | null = null;
 
-    if (getGeminiKey()) {
-      try {
+    try {
+      if (getGeminiKey()) {
         const geminiResult = await callGemini(text, jobDescription, humanize);
         output = geminiResult.output;
-      } catch {
-        // Fall back to Groq if Gemini fails or is unavailable.
-        if (getGroqKey()) {
-          provider = "groq";
+      }
+    } catch {
+      provider = "groq";
+      if (getGroqKey()) {
+        try {
           const groqResult = await callGroq(text, jobDescription, humanize);
           output = groqResult.output;
+        } catch {
+          const fallbackResult = await callGroq(text, jobDescription, humanize, GROQ_FALLBACK_MODEL);
+          output = fallbackResult.output;
         }
       }
-    }
-    if (!output && getGroqKey()) {
-      provider = "groq";
-      const groqResult = await callGroq(text, jobDescription, humanize);
-      output = groqResult.output;
     }
     if (!output) {
       return NextResponse.json(
@@ -161,7 +178,8 @@ export async function POST(req: Request) {
     );
   } catch (error: unknown) {
     console.error("Sharpen API failed:", error);
-    await refundUnits(req, 1);
+    const baseCost = getCost("SHARPEN");
+    await refundUnits(req, baseCost);
     return NextResponse.json(
       { error: "Failed to sharpen bullet points" },
       { status: 500 },

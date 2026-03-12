@@ -63,7 +63,6 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = getPendingUserId(apiRef);
-  const tier = getPendingTier(apiRef);
   if (userId) {
     if (tier !== "credits") {
       await updatePaymentStatus(userId, {

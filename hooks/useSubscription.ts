@@ -10,8 +10,12 @@ export type SubscriptionState = {
   isPaid: boolean;
   tier: string;
   aiCredits: number;
+  /** Total Surgical Units ever purchased from payments. */
+  totalCreditsPurchased: number;
+  /** When true, user has unlimited SU and bypasses credit modals (beta/admin). */
+  isBetaTester: boolean;
   loading: boolean;
-  /** True when user can access Executive PDF and other paid features. */
+  /** True when user can access Executive PDF and other paid features (is_paid OR is_beta_tester). */
   canAccessExecutivePdf: boolean;
   /** True when user can access Firm Proposal features. */
   canAccessFirmProposal: boolean;
@@ -27,7 +31,13 @@ const DEFAULT_TIER = "free";
 export function useSubscription(): SubscriptionState {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<ProfileStatus>({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0 });
+  const [profile, setProfile] = useState<ProfileStatus>({
+    is_paid: false,
+    tier: DEFAULT_TIER,
+    ai_credits: 0,
+    total_credits_purchased: 0,
+    is_beta_tester: false,
+  });
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = useCallback(async (uid: string) => {
@@ -36,6 +46,8 @@ export function useSubscription(): SubscriptionState {
       is_paid: status.is_paid,
       tier: status.tier ?? DEFAULT_TIER,
       ai_credits: status.ai_credits ?? 0,
+      total_credits_purchased: status.total_credits_purchased ?? 0,
+      is_beta_tester: status.is_beta_tester ?? false,
     });
   }, []);
 
@@ -48,7 +60,7 @@ export function useSubscription(): SubscriptionState {
       setSession(s);
       setUser(s?.user ?? null);
       if (!s?.user) {
-        setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0 });
+        setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0, total_credits_purchased: 0, is_beta_tester: false });
         setLoading(false);
         return;
       }
@@ -67,7 +79,7 @@ export function useSubscription(): SubscriptionState {
         await fetchProfile(s.user.id);
       })().finally(() => setLoading(false));
     }).catch(() => {
-      setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0 });
+      setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0, total_credits_purchased: 0, is_beta_tester: false });
       setLoading(false);
     });
 
@@ -77,7 +89,7 @@ export function useSubscription(): SubscriptionState {
       setSession(s);
       setUser(s?.user ?? null);
       if (!s?.user) {
-        setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0 });
+        setProfile({ is_paid: false, tier: DEFAULT_TIER, ai_credits: 0, total_credits_purchased: 0, is_beta_tester: false });
         return;
       }
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
@@ -99,6 +111,8 @@ export function useSubscription(): SubscriptionState {
   const isPaid = profile.is_paid;
   const tier = profile.tier ?? DEFAULT_TIER;
   const aiCredits = (profile as { ai_credits?: number }).ai_credits ?? 0;
+  const totalCreditsPurchased = (profile as { total_credits_purchased?: number }).total_credits_purchased ?? 0;
+  const isBetaTester = (profile as { is_beta_tester?: boolean }).is_beta_tester ?? false;
 
   return {
     user,
@@ -106,9 +120,11 @@ export function useSubscription(): SubscriptionState {
     isPaid,
     tier,
     aiCredits,
+    totalCreditsPurchased,
+    isBetaTester,
     loading,
-    canAccessExecutivePdf: isPaid,
-    canAccessFirmProposal: isPaid,
+    canAccessExecutivePdf: isPaid || isBetaTester,
+    canAccessFirmProposal: isPaid || isBetaTester,
     refetchProfile,
   };
 }

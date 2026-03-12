@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
 import { requireUnits } from "@/lib/credits";
 import { sanitizeForAI, sanitizeShortField } from "@/lib/sanitize";
 import { getGeminiKey, getGroqKey } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 const RECRUITER_SYSTEM =
-  "You are a cynical, experienced tech recruiter who has seen thousands of resumes. You spend only 6 seconds on the first pass. You are skeptical and look for gaps, vague claims, and unsubstantiated skills. Be direct and specific. Output valid JSON only.";
+  "You are a cynical, experienced tech recruiter. Six-second first pass. Skeptical; look for gaps, vague claims, unsubstantiated skills. Be direct and specific. Write the sixSecondImpression and hardQuestions in a natural, conversational tone — how a real recruiter would think or ask, not a formal report. Output valid JSON only.";
 
 type RecruiterRequestBody = {
   fullName?: string;
@@ -42,13 +42,7 @@ async function callGemini(resumeBlob: string, humanize: boolean): Promise<{
 }> {
   const apiKey = getGeminiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
-  const systemInstruction = humanize ? `${RECRUITER_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : RECRUITER_SYSTEM;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
-    systemInstruction,
-  });
-
+  const systemInstruction = humanize ? `${BASE_HUMAN_LIKE}\n\n${RECRUITER_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${RECRUITER_SYSTEM}`;
   const prompt = `Based on this resume, respond with a JSON object containing exactly:
 1. "sixSecondImpression": a single paragraph (2-4 sentences) of what you, as a cynical recruiter, think after a 6-second scan. Mention what stands out positively and what raises red flags (gaps, vague skills, missing metrics).
 2. "vibeSummary": only the short phrase (e.g. "An Authoritative Leader", "A High-Speed Executor", "A Creative Problem Solver") that captures how the recruiter sees this candidate — their voice/vibe. Output only the phrase, max 80 characters.
@@ -56,8 +50,7 @@ async function callGemini(resumeBlob: string, humanize: boolean): Promise<{
 
 Resume:\n${resumeBlob}\n\nOutput only the JSON object, no markdown or extra text.`;
 
-  const result = await model.generateContent([prompt]);
-  const text = result.response.text().trim();
+  const text = await generateWithGeminiFailover(apiKey, { prompt, systemInstruction });
   return parseRecruiterResponse(text);
 }
 
@@ -68,10 +61,10 @@ async function callGroq(resumeBlob: string, humanize: boolean): Promise<{
 }> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
-  const systemContent = humanize ? `${RECRUITER_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : RECRUITER_SYSTEM;
+  const systemContent = humanize ? `${BASE_HUMAN_LIKE}\n\n${RECRUITER_SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${RECRUITER_SYSTEM}`;
   const groq = new Groq({ apiKey });
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-70b-versatile",
+    model: "llama-3.3-70b-versatile",
     temperature: 0.4,
     max_tokens: 1024,
     messages: [

@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setPaymentPending } from "@/lib/payment-store";
 import { getUserIdFromRequest } from "@/lib/credits";
+import { getLivePrice } from "@/lib/pricing";
+import { recordPaymentAttempt } from "@/lib/supabase";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const INTASEND_SECRET = process.env.INTASEND_SECRET_KEY;
 const INTASEND_PUBLISHABLE = process.env.INTASEND_PUBLISHABLE_KEY;
 const INTASEND_BASE = process.env.INTASEND_API_BASE || "https://api.intasend.com";
-
-const TIER_AMOUNTS: Record<string, number> = {
-  single: 19,
-  career: 29,
-  closer: 59,
-  business: 99,
-  all_access: 999,
-  credits: 499,
-  refill_minor: 299,    // 5 SUs
-  refill_standard: 999, // 30 SUs (Best Value)
-  refill_executive: 2499, // 100 SUs
-};
-
-export type PurchaseTier = "single" | "career" | "closer" | "business" | "all_access" | "credits" | "refill_minor" | "refill_standard" | "refill_executive";
 
 function generateTxRef(): string {
   return `rs_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
@@ -40,17 +29,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!checkRateLimit(authUserId, "checkout", 10)) {
+    return NextResponse.json(
+      { error: "Too many payment attempts. Please try again in a minute." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { method, tier, email, name, phone } = body as {
-      method: "card" | "mpesa";
-      tier: PurchaseTier;
+      method?: string;
+      tier?: string;
       email?: string;
       name?: string;
       phone?: string;
     };
 
-    const amount = TIER_AMOUNTS[tier] ?? 19;
+    if (tier !== "all_access") {
+      return NextResponse.json(
+        { error: "Use /api/checkout for payments. Only Executive Pass (all_access) is supported here." },
+        { status: 400 }
+      );
+    }
+
+    const live = await getLivePrice();
+    const amount = Math.max(1, Math.round(Number(live?.price ?? 999)));
     const txRef = generateTxRef();
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -58,9 +62,15 @@ export async function POST(request: NextRequest) {
       "http://localhost:3000";
     const redirectUrl = `${appUrl.replace(/\/$/, "")}?payment_ref=${encodeURIComponent(txRef)}`;
 
-    setPaymentPending(txRef, tier, authUserId, email, name);
+    setPaymentPending(txRef, "all_access", authUserId, email, name);
+    const m = (method || "").toLowerCase();
+    await recordPaymentAttempt(authUserId, {
+      checkoutId: txRef,
+      paymentMethod: m === "mpesa" ? "MPESA" : "CARD",
+      paymentStatus: "pending",
+    });
 
-    if (method === "card") {
+    if (m === "card") {
       if (!INTASEND_PUBLISHABLE) {
         return NextResponse.json(
           { error: "Card payment requires INTASEND_PUBLISHABLE_KEY." },
@@ -81,7 +91,7 @@ export async function POST(request: NextRequest) {
           last_name: last,
           email: email || "customer@example.com",
           amount,
-          currency: "USD",
+          currency: "KES",
           api_ref: txRef,
           redirect_url: redirectUrl,
           host: appUrl.replace(/\/$/, ""),
@@ -105,19 +115,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (method === "mpesa") {
+    if (m === "mpesa") {
       const normalizedPhone = (phone || "").replace(/\D/g, "");
       const mpesaPhone = normalizedPhone.startsWith("254")
-        ? normalizedPhone
-        : `254${normalizedPhone.replace(/^0/, "")}`;
+        ? normalizedPhone.slice(0, 12)
+        : `254${normalizedPhone.replace(/^0/, "").slice(0, 9)}`;
 
-      const mpesaAmount =
-        tier === "credits" ? 499
-        : tier === "all_access" ? 999
-        : tier === "refill_minor" ? 299
-        : tier === "refill_standard" ? 999
-        : tier === "refill_executive" ? 2499
-        : amount;
+      if (mpesaPhone.length < 12) {
+        return NextResponse.json(
+          { error: "Valid M-Pesa phone required (e.g. 254712345678)." },
+          { status: 400 }
+        );
+      }
 
       const res = await fetch(`${INTASEND_BASE}/api/v1/payment/mpesa-stk-push/`, {
         method: "POST",
@@ -126,7 +135,7 @@ export async function POST(request: NextRequest) {
           Authorization: `Bearer ${INTASEND_SECRET}`,
         },
         body: JSON.stringify({
-          amount: String(mpesaAmount),
+          amount: String(amount),
           phone_number: mpesaPhone,
           api_ref: txRef,
         }),
@@ -155,7 +164,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid method. Use card or mpesa." }, { status: 400 });
   } catch (e) {
-    console.error("Payment initiate error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Payment initiate error:", e);
+    }
     return NextResponse.json({ error: "Payment initiation failed." }, { status: 500 });
   }
 }

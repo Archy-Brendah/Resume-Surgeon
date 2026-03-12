@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { HUMANIZE_INSTRUCTION } from "@/lib/humanize";
-import { requireUnits } from "@/lib/credits";
+import Groq from "groq-sdk";
+import { BASE_HUMAN_LIKE, HUMANIZE_INSTRUCTION } from "@/lib/humanize";
+import { validateAndDeduct } from "@/lib/credits";
 import { sanitizeForAI } from "@/lib/sanitize";
-import { getGeminiKey } from "@/lib/ai-keys";
+import { getGeminiKey, getGroqKey, GROQ_MAIN_MODEL } from "@/lib/ai-keys";
+import { generateWithGeminiFailover } from "@/lib/gemini-client";
 
 type TailorResumeBody = {
   resumeText: string;
@@ -12,16 +13,15 @@ type TailorResumeBody = {
   humanize?: boolean;
 };
 
-const SYSTEM = `You are an expert executive resume writer. Your task is to SURGICALLY tailor a resume to a job description.
+const SYSTEM = `You are an expert executive resume writer. Tailor the resume to the job description.
 
 RULES:
-- Modify ONLY 3-4 bullet points (and optionally one short professional summary line). Do NOT rewrite the entire resume.
-- Preserve the candidate's exact facts, numbers, and achievements. Only change wording to use the JD's terminology and emphasize alignment.
-- Tone must be Executive/Bespoke: confident, concise, action-led. No casual language.
-- Output valid JSON only, no markdown. Use this structure:
-{"professionalSummary": "One sentence summary or empty string if not needed", "tailoredBullets": ["bullet1", "bullet2", "bullet3"]}
-- tailoredBullets: array of 3-4 rewritten bullets. Use the JD's keywords naturally. Keep each bullet to 1-2 lines.
-- If the resume has no clear summary, professionalSummary can be "".`;
+- Modify ONLY 3-4 bullet points (and optionally one short professional summary). Do NOT rewrite the entire resume.
+- Keep the candidate's exact facts, numbers, and achievements. Change wording to use the JD's terminology and show alignment.
+- Tone: confident, concise, action-led. Write bullets so they sound like a human wrote them — vary length and structure; avoid every bullet following the same formula.
+- Output valid JSON only, no markdown: {"professionalSummary": "One sentence or empty string", "tailoredBullets": ["bullet1", "bullet2", "bullet3"]}
+- tailoredBullets: 3-4 rewritten bullets. Weave in JD keywords naturally. Mix short and slightly longer bullets so it doesn't read robotic.
+- If no clear summary exists, professionalSummary can be "".`;
 
 function extractJson(text: string): { professionalSummary: string; tailoredBullets: string[] } | null {
   const trimmed = text.trim();
@@ -40,12 +40,12 @@ function extractJson(text: string): { professionalSummary: string; tailoredBulle
 
 export async function POST(request: Request) {
   try {
-    const unitCheck = await requireUnits(request, "TAILOR");
-    if (unitCheck.unitResponse) return unitCheck.unitResponse;
-    const creditsRemaining = unitCheck.creditsRemaining;
-
     const body = (await request.json()) as TailorResumeBody;
     const { resumeText = "", jobDescription = "", missingKeywords = [], humanize = false } = body;
+
+    const unitCheck = await validateAndDeduct(request, "TAILOR", { humanize });
+    if ("unitResponse" in unitCheck && unitCheck.unitResponse) return unitCheck.unitResponse;
+    const creditsRemaining = unitCheck.creditsRemaining;
 
     const jd = sanitizeForAI(jobDescription);
     const resume = sanitizeForAI(resumeText);
@@ -57,30 +57,42 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = getGeminiKey();
-    if (!apiKey) {
+    const geminiKey = getGeminiKey();
+    const groqKey = getGroqKey();
+    if (!geminiKey && !groqKey) {
       return NextResponse.json(
-        { error: "Tailoring service not configured. Add GEMINI_API_KEY to .env.local." },
+        { error: "Tailoring service not configured. Add GEMINI_API_KEY or GROQ_API_KEY to .env.local." },
         { status: 503 }
       );
     }
 
-    const systemInstruction = humanize ? `${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : SYSTEM;
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
-      systemInstruction,
-    });
-
+    const systemInstruction = humanize ? `${BASE_HUMAN_LIKE}\n\n${SYSTEM}\n\n${HUMANIZE_INSTRUCTION}` : `${BASE_HUMAN_LIKE}\n\n${SYSTEM}`;
     const missingHint = missingKeywords.length > 0
       ? `\nKeywords from the JD to weave in where relevant: ${missingKeywords.slice(0, 15).join(", ")}`
       : "";
+    const prompt = `JOB DESCRIPTION:\n${jd}\n\n---\nCURRENT RESUME (experience/summary):\n${resume}${missingHint}\n\n---\nRespond with the single JSON object only (professionalSummary + tailoredBullets). Surgically rewrite only 3-4 bullets and optionally one summary line. Preserve all facts; use JD terminology and Executive tone.`;
 
-    const result = await model.generateContent(
-      `JOB DESCRIPTION:\n${jd}\n\n---\nCURRENT RESUME (experience/summary):\n${resume}${missingHint}\n\n---\nRespond with the single JSON object only (professionalSummary + tailoredBullets). Surgically rewrite only 3-4 bullets and optionally one summary line. Preserve all facts; use JD terminology and Executive tone.`
-    );
-
-    const raw = result.response.text().trim();
+    let raw: string;
+    try {
+      if (geminiKey) {
+        raw = await generateWithGeminiFailover(geminiKey, { prompt, systemInstruction });
+      } else {
+        throw new Error("No Gemini key");
+      }
+    } catch {
+      if (!groqKey) throw new Error("Tailoring service not configured. Add GEMINI_API_KEY or GROQ_API_KEY.");
+      const groq = new Groq({ apiKey: groqKey });
+      const completion = await groq.chat.completions.create({
+        model: GROQ_MAIN_MODEL,
+        temperature: 0.3,
+        max_tokens: 1024,
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: prompt },
+        ],
+      });
+      raw = (completion.choices[0]?.message?.content ?? "").trim();
+    }
     const parsed = extractJson(raw);
 
     if (!parsed || parsed.tailoredBullets.length === 0) {

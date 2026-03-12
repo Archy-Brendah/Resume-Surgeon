@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Toaster } from "sonner";
 import { Inter, Montserrat, Playfair_Display } from "next/font/google";
 
 const inter = Inter({
@@ -35,8 +36,9 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${playfair.variable} ${montserrat.variable}`}
     >
-      <body className="min-h-screen bg-slate-950 text-slate-50 antialiased app-bg">
+      <body className="min-h-screen text-[#292524] antialiased app-bg font-body">
         {children}
+        <Toaster position="bottom-right" theme="light" richColors />
       </body>
     </html>
   );

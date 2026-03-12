@@ -36,8 +36,8 @@ export async function getUserIdByCheckoutId(apiRef: string): Promise<string | nu
 }
 
 /**
- * Sets is_paid to true for a user. Use from payment webhook only (no user JWT in webhook).
- * RLS blocks anon updates by user_id; service role bypasses RLS so the webhook can update.
+ * Sets is_paid, is_executive, and tier='executive' for a user (Executive Pass).
+ * Use from payment webhook only when 999 or 1499 KSH pass is purchased.
  */
 export async function setUserPaidServer(userId: string): Promise<{ ok: boolean; error?: string }> {
   if (!userId?.trim()) return { ok: false, error: "Missing userId" };
@@ -46,14 +46,72 @@ export async function setUserPaidServer(userId: string): Promise<{ ok: boolean; 
     console.warn("[supabase-server] SUPABASE_SERVICE_ROLE_KEY not set");
     return { ok: false, error: "Service role not configured" };
   }
+  const updates: Record<string, unknown> = {
+    is_paid: true,
+    is_executive: true,
+    tier: "executive",
+    updated_at: new Date().toISOString(),
+  };
   const { error } = await supabase
     .schema(schema)
     .from("user_assets")
-    .update({ is_paid: true, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq("user_id", userId.trim());
   if (error) {
     console.error("[supabase-server] setUserPaidServer error:", error);
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+/**
+ * Logs a payment to refill_history (Executive Pass or top-up). Call from webhook after applying credits.
+ */
+export async function logRefillHistory(
+  userId: string,
+  amountKes: number,
+  creditsAdded: number,
+  refillType: "executive" | "topup",
+  checkoutId?: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!userId?.trim()) return { ok: false, error: "Missing userId" };
+  const supabase = await getServiceClient();
+  if (!supabase) return { ok: false, error: "Service role not configured" };
+  const { error } = await supabase.schema(schema).from("refill_history").insert({
+    user_id: userId.trim(),
+    amount_kes: amountKes,
+    credits_added: creditsAdded,
+    refill_type: refillType,
+    checkout_id: checkoutId ?? null,
+  });
+  if (error) {
+    console.error("[supabase-server] logRefillHistory error:", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
+ * Variable-amount Surgical Unit top-up (Refill Balance). Calls handle_surgical_topup RPC.
+ * Use from IntaSend webhook when tier === "surgical_refill".
+ */
+export async function handleSurgicalTopup(
+  userId: string,
+  amountKes: number
+): Promise<{ ok: boolean; newBalance?: number; error?: string }> {
+  if (!userId?.trim() || amountKes == null || amountKes <= 0) {
+    return { ok: false, error: "Invalid user or amount" };
+  }
+  const supabase = await getServiceClient();
+  if (!supabase) return { ok: false, error: "Service role not configured" };
+  const { data, error } = await supabase.schema(schema).rpc("handle_surgical_topup", {
+    p_user_id: userId.trim(),
+    p_amount_kes: Math.round(Number(amountKes)),
+  });
+  if (error) {
+    console.error("[supabase-server] handle_surgical_topup error:", error);
+    return { ok: false, error: error.message };
+  }
+  const newBalance = typeof data === "number" ? data : undefined;
+  return { ok: true, newBalance };
 }

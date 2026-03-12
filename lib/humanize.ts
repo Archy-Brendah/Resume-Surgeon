@@ -1,11 +1,15 @@
 /**
  * Anti-AI Stealth Mode (Humanization)
- * Instructs the model and/or post-processes output so text is less likely to be flagged
- * by AI content detectors (vary sentence length, add burstiness).
+ * Instructs the model so output reads like a skilled human wrote it and is less likely
+ * to be flagged by AI content detectors (burstiness, varied structure, natural word choice).
  */
 
-/** Instruction appended to system/user prompts when humanize is enabled. */
-export const HUMANIZE_INSTRUCTION = `CRITICAL — Humanization (Anti-AI Stealth): Write so the output reads as if a human wrote it, not an AI. Vary sentence length significantly: use a mix of short, punchy sentences (3–8 words) and longer, flowing ones (15–25 words). Use a more conversational professional tone. Avoid typical AI transition words like "Moreover", "Furthermore", or "In conclusion". Do not start consecutive sentences the same way. Add "burstiness": alternate rhythm—e.g. short. Then a longer sentence that develops the idea. Then short again. Make it sound like a top-tier human consultant wrote it. This helps the text pass AI content detectors used by some firms.`;
+/** Short nudge included in every system prompt so baseline output is more human-like. */
+export const BASE_HUMAN_LIKE =
+  "Write as a skilled human would: use varied sentence length (mix short and longer sentences), natural word choice, and a conversational-but-professional tone. Avoid robotic patterns: no repeated sentence openers, no overuse of 'Furthermore' or 'Additionally', and no uniform list-like phrasing. The goal is text that reads like it was written by an expert human and performs well on AI detection checks.";
+
+/** Instruction appended when Humanize (Stealth) is enabled — stronger anti-detection. */
+export const HUMANIZE_INSTRUCTION = `CRITICAL — Humanization (pass AI detection): Write so the output reads as if a human expert wrote it, not an AI. (1) Vary sentence length a lot: use short, punchy sentences (3–8 words) alongside longer, flowing ones (15–25 words). (2) Add burstiness: alternate rhythm — e.g. short. Then a longer sentence that develops the idea. Then short again. (3) Avoid telltale AI phrasing: no "Moreover", "Furthermore", "In conclusion", "It is important to", "In today's world". (4) Do not start consecutive sentences the same way. (5) Use contractions where natural (e.g. "I've", "that's"). (6) Prefer concrete, specific wording over generic or flowery. (7) Slight asymmetry is good — not every paragraph needs the same structure. This helps the text pass AI content detectors used by recruiters and tools.`;
 
 /**
  * Optional post-process for prose. Currently returns as-is; prompt instruction does the work.

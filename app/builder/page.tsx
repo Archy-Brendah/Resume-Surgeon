@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ArrowLeft, Coins, Download, FileText, Lock, Activity, Sparkles } from "lucide-react";
+import { ArrowLeft, Coins, Download, FileText, Lock, Activity, Sparkles, Upload } from "lucide-react";
 import { getCost } from "@/lib/su-costs";
 import { useSubscription } from "@/hooks/useSubscription";
 
@@ -127,9 +127,12 @@ function getPowerSkillsSuggestions(role: string): string[] {
 
 export default function BuilderPage() {
   const router = useRouter();
-  const { isPaid, canAccessExecutivePdf, aiCredits, session, refetchProfile } = useSubscription();
+  const { isPaid, canAccessExecutivePdf, aiCredits, isBetaTester, session, refetchProfile } = useSubscription();
   const [builderTab, setBuilderTab] = useState<"input" | "preview">("input");
   const [showRefillModal, setShowRefillModal] = useState(false);
+  const [autofillLoading, setAutofillLoading] = useState(false);
+  const [autofillToast, setAutofillToast] = useState(false);
+  const autofillInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState("");
   const [targetRole, setTargetRole] = useState("");
@@ -178,9 +181,16 @@ export default function BuilderPage() {
     [fullName, targetRole, email, profileUrl, experience, skills, sharpened]
   );
 
-  const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  const authHeaders: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  const [lastSharpenKey, setLastSharpenKey] = useState<string | null>(null);
+  const [lastMatchKey, setLastMatchKey] = useState<string | null>(null);
+
   const handleSharpen = useCallback(async () => {
     if (!experience.trim()) return;
+    const key = `${experience.trim()}||${humanizeAI ? "humanize" : "raw"}`;
+    if (key && key === lastSharpenKey && sharpened.trim()) {
+      return;
+    }
     setStatus("sharpening");
     setGlimmerOnSection(true);
     try {
@@ -190,13 +200,17 @@ export default function BuilderPage() {
         body: JSON.stringify({ text: experience, jobDescription: "", humanize: humanizeAI }),
       });
       const data = (await res.json()) as { result?: string; code?: string };
-      if (res.status === 402 && data?.code === "CREDITS_REQUIRED") {
+      if (res.status === 402 && data?.code === "CREDITS_REQUIRED" && !isBetaTester) {
         setShowRefillModal(true);
         setStatus("idle");
         return;
       }
       if (!res.ok) throw new Error("Sharpen failed");
-      if (data.result) setSharpened(data.result.trim());
+      if (data.result) {
+        const cleaned = data.result.trim();
+        setSharpened(cleaned);
+        setLastSharpenKey(key || null);
+      }
       setStatus("done");
       setRescanTrigger((t) => t + 1);
       if (typeof (data as { creditsRemaining?: number }).creditsRemaining === "number") {
@@ -207,7 +221,7 @@ export default function BuilderPage() {
     } finally {
       setTimeout(() => setGlimmerOnSection(false), 1200);
     }
-  }, [experience, humanizeAI, authHeaders, refetchProfile]);
+  }, [experience, humanizeAI, sharpened, lastSharpenKey, authHeaders, refetchProfile]);
 
   const handleDivineUnlock = useCallback(() => {
     router.push("/?openCheckout=1");
@@ -217,6 +231,10 @@ export default function BuilderPage() {
     const jd = jobDescription.trim();
     if (!jd) return;
     const resumeText = [fullName, targetRole, experience, sharpened, skills].filter(Boolean).join("\n");
+    const key = `${jd}||${resumeText}||${humanizeAI ? "humanize" : "raw"}`;
+    if (key && key === lastMatchKey && matchResult) {
+      return;
+    }
     setMatchLoading(true);
     setMatchResult(null);
     try {
@@ -226,7 +244,7 @@ export default function BuilderPage() {
         body: JSON.stringify({ resumeText, jobDescription: jd, humanize: humanizeAI }),
       });
       const data = await res.json();
-      if (res.status === 402 && data?.code === "CREDITS_REQUIRED") {
+      if (res.status === 402 && data?.code === "CREDITS_REQUIRED" && !isBetaTester) {
         setShowRefillModal(true);
         return;
       }
@@ -247,12 +265,13 @@ export default function BuilderPage() {
         surgicalAdjustments: data.surgicalAdjustments ?? [],
       });
       if (typeof data.creditsRemaining === "number") refetchProfile();
+      setLastMatchKey(key || null);
     } catch {
       setMatchResult(null);
     } finally {
       setMatchLoading(false);
     }
-  }, [jobDescription, fullName, targetRole, experience, sharpened, skills, authHeaders, refetchProfile]);
+  }, [jobDescription, fullName, targetRole, experience, sharpened, skills, humanizeAI, matchResult, lastMatchKey, authHeaders, refetchProfile]);
 
   useEffect(() => {
     if (matchResult && matchResult.matchPercentage >= 90) {
@@ -263,6 +282,95 @@ export default function BuilderPage() {
       } catch (_) {}
     }
   }, [matchResult?.matchPercentage]);
+
+  const handleSurgicalAutofill = useCallback(async (file: File) => {
+    setAutofillLoading(true);
+    setAutofillToast(false);
+    try {
+      let text: string;
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".txt") || file.type === "text/plain") {
+        text = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result ?? ""));
+          r.onerror = rej;
+          r.readAsText(file);
+        });
+      } else {
+        const fd = new FormData();
+        fd.append("file", file);
+        const parseRes = await fetch("/api/parse-resume", { method: "POST", body: fd });
+        const parseData = await parseRes.json();
+        if (!parseRes.ok) throw new Error((parseData as { error?: string }).error ?? "Failed to read file");
+        text = [parseData.fullName, parseData.email, parseData.targetRole, parseData.experience, parseData.skills]
+          .filter(Boolean)
+          .join("\n\n");
+        if (!text.trim()) text = (parseData as { text?: string }).text ?? (parseData as { experience?: string }).experience ?? "";
+      }
+      if (!text || text.trim().length < 20) throw new Error("Resume text too short");
+
+      const res = await fetch("/api/surgical-autofill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ text: text.trim() }),
+      });
+      const data = await res.json();
+
+      if (res.status === 402 && !isBetaTester) {
+        setShowRefillModal(true);
+        return;
+      }
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Auto-fill failed");
+
+      const p = data as {
+        name?: string;
+        email?: string;
+        phone?: string;
+        location?: string;
+        skills?: string[];
+        experience?: Array<{ company?: string; role?: string; duration?: string; bullets?: string[] }>;
+        education?: Array<{ school?: string; degree?: string; year?: string }>;
+      };
+
+      if (p.name?.trim()) setFullName(p.name.trim());
+      if (p.email?.trim()) setEmail(p.email.trim());
+      if (Array.isArray(p.skills) && p.skills.length > 0) {
+        setSkills(p.skills.map((s) => String(s).trim()).filter(Boolean).join(", "));
+      }
+      const expParts: string[] = [];
+      if (Array.isArray(p.experience) && p.experience.length > 0) {
+        for (const job of p.experience) {
+          const role = job.role?.trim() ?? "";
+          const company = job.company?.trim() ?? "";
+          const duration = job.duration?.trim() ?? "";
+          const line = [role, company].filter(Boolean).join(company ? " at " : "") + (duration ? ` (${duration})` : "");
+          if (line) expParts.push(line);
+          if (Array.isArray(job.bullets) && job.bullets.length > 0) {
+            expParts.push(...job.bullets.map((b) => (b?.trim() ? `• ${String(b).trim()}` : "")).filter(Boolean));
+          }
+        }
+      }
+      let experienceText = expParts.length > 0 ? expParts.join("\n") : "";
+      if (Array.isArray(p.education) && p.education.length > 0) {
+        const eduLines = p.education
+          .map((e) => [e.degree, e.school, e.year].filter(Boolean).join(" – "))
+          .filter(Boolean);
+        if (eduLines.length > 0) experienceText = experienceText ? `${experienceText}\n\nEducation\n${eduLines.join("\n")}` : `Education\n${eduLines.join("\n")}`;
+      }
+      if (experienceText) setExperience(experienceText);
+      if (!(p as { name?: string }).name && Array.isArray(p.experience) && p.experience[0]?.role) {
+        setTargetRole((t) => t || (p.experience![0].role ?? "").trim());
+      }
+      setRescanTrigger((t) => t + 1);
+      setAutofillToast(true);
+      setTimeout(() => setAutofillToast(false), 5000);
+      if (typeof (data as { creditsRemaining?: number }).creditsRemaining === "number") refetchProfile();
+    } catch (err) {
+      console.error("Surgical Auto-Fill error:", err);
+    } finally {
+      setAutofillLoading(false);
+    }
+  }, [authHeaders, refetchProfile, isBetaTester]);
 
   const handleTailorResume = useCallback(async () => {
     const jd = jobDescription.trim();
@@ -281,7 +389,7 @@ export default function BuilderPage() {
         }),
       });
       const data = await res.json();
-      if (res.status === 402 && data?.code === "CREDITS_REQUIRED") {
+      if (res.status === 402 && data?.code === "CREDITS_REQUIRED" && !isBetaTester) {
         setShowRefillModal(true);
         return;
       }
@@ -301,6 +409,19 @@ export default function BuilderPage() {
 
   return (
     <div className="min-h-screen app-bg text-slate-100 flex flex-col">
+      <AnimatePresence>
+        {autofillToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-surgicalTeal/40 bg-slate-900/95 shadow-lg shadow-surgicalTeal/10 text-center"
+          >
+            <p className="text-sm text-slate-100 font-medium">Surgical Scan Complete</p>
+            <p className="text-xs text-slate-400 mt-0.5">~85% of fields auto-filled. Please review for accuracy.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="glass-panel border-b border-white/10 sticky top-0 z-30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -313,7 +434,7 @@ export default function BuilderPage() {
             </Link>
             {session && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs text-slate-300" title="Surgical Units remaining">
-                <Coins className="h-3.5 w-3.5 text-surgicalTeal" />
+                <Coins className="h-3.5 w-3.5 text-neonGreen" />
                 <span className="font-medium text-slate-100">{aiCredits}</span>
                 <span className="hidden sm:inline">SUs</span>
               </span>
@@ -327,7 +448,7 @@ export default function BuilderPage() {
                 disabled={!canDownload}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
                   canDownload
-                    ? "border-surgicalTeal/70 bg-surgicalTeal/10 text-surgicalTeal hover:bg-surgicalTeal/20"
+                    ? "border-surgicalTeal/70 bg-surgicalTeal/10 text-neonGreen hover:bg-surgicalTeal/20"
                     : "border-slate-700 text-slate-500 cursor-not-allowed blur-[2px] select-none"
                 }`}
                 title={canDownload ? "Download PDF (from Clinic)" : "Unlock to download"}
@@ -339,7 +460,7 @@ export default function BuilderPage() {
                 <button
                   type="button"
                   onClick={handleDivineUnlock}
-                  className="absolute inset-0 flex items-center justify-center rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-surgicalTeal text-xs font-medium hover:bg-surgicalTeal/25"
+                  className="absolute inset-0 flex items-center justify-center rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-neonGreen text-xs font-medium hover:bg-surgicalTeal/25"
                 >
                   Divine Unlock
                 </button>
@@ -352,7 +473,7 @@ export default function BuilderPage() {
                 disabled={!canDownload}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
                   canDownload
-                    ? "border-surgicalTeal/70 bg-surgicalTeal/10 text-surgicalTeal hover:bg-surgicalTeal/20"
+                    ? "border-surgicalTeal/70 bg-surgicalTeal/10 text-neonGreen hover:bg-surgicalTeal/20"
                     : "border-slate-700 text-slate-500 cursor-not-allowed blur-[2px] select-none"
                 }`}
                 title={canDownload ? "Export Proposal (from Clinic)" : "Unlock to export"}
@@ -364,7 +485,7 @@ export default function BuilderPage() {
                 <button
                   type="button"
                   onClick={handleDivineUnlock}
-                  className="absolute inset-0 flex items-center justify-center rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-surgicalTeal text-xs font-medium hover:bg-surgicalTeal/25"
+                  className="absolute inset-0 flex items-center justify-center rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-neonGreen text-xs font-medium hover:bg-surgicalTeal/25"
                 >
                   Divine Unlock
                 </button>
@@ -381,7 +502,7 @@ export default function BuilderPage() {
             type="button"
             onClick={() => setBuilderTab("input")}
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              builderTab === "input" ? "bg-surgicalTeal/20 text-surgicalTeal" : "text-slate-400 hover:text-slate-200"
+              builderTab === "input" ? "bg-surgicalTeal/20 text-neonGreen" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             Input
@@ -390,7 +511,7 @@ export default function BuilderPage() {
             type="button"
             onClick={() => setBuilderTab("preview")}
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              builderTab === "preview" ? "bg-surgicalTeal/20 text-surgicalTeal" : "text-slate-400 hover:text-slate-200"
+              builderTab === "preview" ? "bg-surgicalTeal/20 text-neonGreen" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             Preview
@@ -398,7 +519,7 @@ export default function BuilderPage() {
         </div>
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 h-full">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-stretch h-[calc(100vh-8rem)] lg:h-[calc(100vh-6rem)] min-h-[480px]">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)] items-stretch h-[calc(100vh-8rem)] lg:h-[calc(100vh-6rem)] min-h-[480px]">
             {/* Left: Input panel — Bento sections */}
             <section
               className={`flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 ${
@@ -407,7 +528,39 @@ export default function BuilderPage() {
             >
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
                 <div className="bento-card p-4 rounded-xl space-y-3">
-                  <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surgicalTeal">Vitals</h2>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neonGreen">Vitals</h2>
+                    <input
+                      ref={autofillInputRef}
+                      type="file"
+                      accept=".pdf,.txt,application/pdf,text/plain"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleSurgicalAutofill(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => autofillInputRef.current?.click()}
+                      disabled={autofillLoading || (!isBetaTester && aiCredits < getCost("SURGICAL_AUTOFILL"))}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-2.5 py-1.5 text-[11px] font-medium text-neonGreen hover:border-surgicalTeal/70 disabled:opacity-50 transition-colors"
+                    >
+                      {autofillLoading ? (
+                        <>
+                          <span className="surgical-pulse" aria-hidden />
+                          Scanning Resume…
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-3.5 w-3.5" />
+                          Surgical Auto-Fill
+                          <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-400">{getCost("SURGICAL_AUTOFILL")} SU</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     placeholder="Full name"
@@ -443,7 +596,7 @@ export default function BuilderPage() {
                           key={i}
                           type="button"
                           onClick={() => setSkills((s) => (s.trim() ? `${s}, ${skill}` : skill))}
-                          className="rounded-md border border-surgicalTeal/30 bg-surgicalTeal/5 px-2 py-1 text-[11px] text-surgicalTeal hover:bg-surgicalTeal/15"
+                          className="rounded-md border border-surgicalTeal/30 bg-surgicalTeal/5 px-2 py-1 text-[11px] text-neonGreen hover:bg-surgicalTeal/15"
                         >
                           + {skill}
                         </button>
@@ -458,12 +611,12 @@ export default function BuilderPage() {
                       aria-checked={humanizeAI}
                       onClick={() => setHumanizeAI((v) => !v)}
                       className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border transition-colors ${
-                        humanizeAI ? "border-surgicalTeal/60 bg-surgicalTeal/20" : "border-slate-600 bg-slate-800"
+                        humanizeAI ? "border-surgicalTeal/60 bg-surgicalTeal/20" : "border-amber-400/60 bg-amber-100"
                       }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-4 w-3.5 rounded-full bg-slate-200 shadow-sm transition-transform mt-0.5 ml-0.5 ${
-                          humanizeAI ? "translate-x-4 bg-surgicalTeal" : "translate-x-0"
+                        className={`pointer-events-none inline-block h-4 w-3.5 rounded-full shadow-sm transition-transform mt-0.5 ml-0.5 ${
+                          humanizeAI ? "translate-x-4 bg-surgicalTeal" : "translate-x-0 bg-amber-400"
                         }`}
                       />
                     </button>
@@ -473,12 +626,12 @@ export default function BuilderPage() {
                 {/* Target Job — Surgical Matcher */}
                 <div className="bento-card p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surgicalTeal flex items-center gap-1.5">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neonGreen flex items-center gap-1.5">
                       Target Job
-                      {matchLoading && <Activity className="h-3.5 w-3.5 text-surgicalTeal animate-pulse" aria-hidden />}
+                      {matchLoading && <Activity className="h-3.5 w-3.5 text-neonGreen animate-pulse" aria-hidden />}
                     </h2>
                     {matchLoading && (
-                      <span className="flex items-center gap-1.5 text-[10px] text-surgicalTeal" aria-live="polite">
+                      <span className="flex items-center gap-1.5 text-[10px] text-neonGreen" aria-live="polite">
                         <span className="surgical-pulse" aria-hidden />
                         Analyzing…
                       </span>
@@ -496,7 +649,7 @@ export default function BuilderPage() {
                       type="button"
                       onClick={handleAnalyzeMatch}
                       disabled={matchLoading || !jobDescription.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-3 py-1.5 text-[11px] font-medium text-surgicalTeal disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-3 py-1.5 text-[11px] font-medium text-neonGreen disabled:opacity-50"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -519,12 +672,12 @@ export default function BuilderPage() {
 
                 <div className="bento-card p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surgicalTeal">Experience</h2>
+                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neonGreen">Experience</h2>
                     <motion.button
                       type="button"
                       onClick={handleSharpen}
                       disabled={status === "sharpening" || !experience.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-2.5 py-1 text-[11px] font-medium text-surgicalTeal disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-2.5 py-1 text-[11px] font-medium text-neonGreen disabled:opacity-50"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -541,14 +694,14 @@ export default function BuilderPage() {
                     className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/70 focus:outline-none focus:ring-1 focus:ring-surgicalTeal/60 resize-y min-h-[120px]"
                   />
                   {status === "sharpening" && (
-                    <p className="text-[10px] text-surgicalTeal flex items-center gap-2">
+                    <p className="text-[10px] text-neonGreen flex items-center gap-2">
                       <span className="surgical-pulse" aria-hidden /> Performing surgery…
                     </p>
                   )}
                 </div>
 
                 <div className="bento-card p-4 rounded-xl space-y-2">
-                  <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surgicalTeal">Skills</h2>
+                  <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neonGreen">Skills</h2>
                   <textarea
                     rows={3}
                     placeholder="Key skills, tools, and domains."
@@ -562,7 +715,7 @@ export default function BuilderPage() {
 
             {/* Right: Sticky live preview — Surgical Report + Executive template */}
             <section
-              className={`flex flex-col overflow-hidden rounded-2xl border border-slate-700/50 ${
+              className={`flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 ${
                 builderTab !== "preview" ? "hidden lg:flex" : ""
               }`}
             >
@@ -573,9 +726,9 @@ export default function BuilderPage() {
                   initial={rescanTrigger > 0 ? { opacity: 0.7, scale: 0.98 } : false}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.4 }}
-                  className="audit-card rounded-xl border border-surgicalTeal/30 bg-slate-900/60 backdrop-blur-sm p-4"
+                  className="audit-card rounded-xl border border-emerald-200 bg-emerald-50/80 backdrop-blur-sm p-4"
                 >
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-surgicalTeal font-medium mb-3">
+                  <p className="text-xs uppercase tracking-wider text-neonGreenDark font-medium mb-3">
                     Recruiter&apos;s 6-Second Audit
                   </p>
                   <div className="flex flex-wrap items-center gap-4 sm:gap-6">
@@ -590,7 +743,7 @@ export default function BuilderPage() {
                             d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
                           />
                           <motion.path
-                            className="text-surgicalTeal"
+                            className="text-neonGreen"
                             stroke="currentColor"
                             strokeWidth="2.5"
                             strokeLinecap="round"
@@ -602,13 +755,13 @@ export default function BuilderPage() {
                             d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
                           />
                         </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-100 tabular-nums">
+                        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 tabular-nums">
                           {audit.score}%
                         </span>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-200">Recruiter Impact Score</p>
-                        <p className="text-[10px] text-slate-500">Based on length, verbs &amp; metrics</p>
+                        <p className="text-sm font-semibold text-slate-800">Recruiter Impact Score</p>
+                        <p className="text-xs text-slate-600">Based on length, verbs &amp; metrics</p>
                       </div>
                     </div>
                     {/* Match Rate badge — ATS Scanner */}
@@ -618,7 +771,7 @@ export default function BuilderPage() {
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
                           matchResult
                             ? matchResult.matchPercentage >= 70
-                              ? "bg-emerald-500/20 text-emerald-400"
+                              ? "bg-emerald-500/20 text-neonGreen"
                               : "bg-amber-500/20 text-amber-400"
                             : "bg-slate-700/80 text-slate-500"
                         }`}>
@@ -632,43 +785,43 @@ export default function BuilderPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0 space-y-2">
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className={audit.vitals.contactInfo.status === "good" ? "text-emerald-400" : "text-slate-500"}>✅</span>
-                        <span className="text-slate-400">Contact Info:</span>
-                        <span className={audit.vitals.contactInfo.status === "good" ? "text-emerald-300" : "text-amber-400"}>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className={audit.vitals.contactInfo.status === "good" ? "text-emerald-600" : "text-slate-500"}>✅</span>
+                        <span className="text-slate-600">Contact Info:</span>
+                        <span className={audit.vitals.contactInfo.status === "good" ? "text-neonGreenDark" : "text-amber-400"}>
                           {audit.vitals.contactInfo.label}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px]">
+                      <div className="flex items-center gap-2 text-sm">
                         <span className={
-                          audit.vitals.impactMetrics.status === "good" ? "text-emerald-400" :
-                          audit.vitals.impactMetrics.status === "warning" ? "text-amber-400" : "text-slate-500"
+                          audit.vitals.impactMetrics.status === "good" ? "text-emerald-600" :
+                          audit.vitals.impactMetrics.status === "warning" ? "text-amber-500" : "text-slate-500"
                         }>⚠️</span>
-                        <span className="text-slate-400">Impact Metrics:</span>
+                        <span className="text-slate-600">Impact Metrics:</span>
                         <span className={
-                          audit.vitals.impactMetrics.status === "good" ? "text-emerald-300" :
-                          audit.vitals.impactMetrics.status === "warning" ? "text-amber-300" : "text-rose-400"
+                          audit.vitals.impactMetrics.status === "good" ? "text-neonGreenDark" :
+                          audit.vitals.impactMetrics.status === "warning" ? "text-amber-600" : "text-rose-600"
                         }>
                           {audit.vitals.impactMetrics.label}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px]">
+                      <div className="flex items-center gap-2 text-sm">
                         <span className={
-                          audit.vitals.actionVerbs.status === "good" ? "text-emerald-400" :
-                          audit.vitals.actionVerbs.status === "warning" ? "text-amber-400" : "text-slate-500"
+                          audit.vitals.actionVerbs.status === "good" ? "text-emerald-600" :
+                          audit.vitals.actionVerbs.status === "warning" ? "text-amber-500" : "text-slate-500"
                         }>❌</span>
-                        <span className="text-slate-400">Action Verbs:</span>
+                        <span className="text-slate-600">Action Verbs:</span>
                         <span className={
-                          audit.vitals.actionVerbs.status === "good" ? "text-emerald-300" :
-                          audit.vitals.actionVerbs.status === "warning" ? "text-amber-300" : "text-rose-400"
+                          audit.vitals.actionVerbs.status === "good" ? "text-neonGreenDark" :
+                          audit.vitals.actionVerbs.status === "warning" ? "text-amber-600" : "text-rose-600"
                         }>
                           {audit.vitals.actionVerbs.label}
                         </span>
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-slate-700/80">
-                    <p className="text-[11px] text-slate-400 leading-snug">
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <p className="text-sm text-slate-600 leading-snug">
                       {audit.doctorsNote}
                     </p>
                   </div>
@@ -679,11 +832,11 @@ export default function BuilderPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4 space-y-3"
+                    className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3"
                   >
                     {/* Match Breakdown — 3 bars */}
                     <div className="space-y-2">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-surgicalTeal font-medium">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-neonGreen font-medium">
                         Match Breakdown
                       </p>
                       <div className="space-y-2">
@@ -693,8 +846,8 @@ export default function BuilderPage() {
                           { label: "Tone & Culture", value: matchResult.toneCulture ?? matchResult.matchPercentage },
                         ].map(({ label, value }) => (
                           <div key={label} className="flex items-center gap-2">
-                            <span className="w-28 text-[10px] text-slate-400 shrink-0">{label}</span>
-                            <div className="flex-1 h-2 rounded-full bg-slate-700/80 overflow-hidden">
+                            <span className="w-28 text-xs text-slate-600 shrink-0">{label}</span>
+                            <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
                               <motion.div
                                 className="h-full rounded-full bg-surgicalTeal"
                                 initial={{ width: 0 }}
@@ -702,12 +855,12 @@ export default function BuilderPage() {
                                 transition={{ duration: 0.6, ease: "easeOut" }}
                               />
                             </div>
-                            <span className="w-8 text-right text-[10px] text-slate-300 tabular-nums">{value}%</span>
+                            <span className="w-8 text-right text-xs text-slate-700 tabular-nums font-medium">{value}%</span>
                           </div>
                         ))}
                       </div>
                       {((matchResult.skillAlignment ?? 0) >= 90 && (matchResult.roleExperience ?? 0) >= 90 && (matchResult.toneCulture ?? 0) >= 90) && (
-                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-medium text-neonGreen">
                           <span aria-hidden>✓</span>
                           Surgical Seal of Approval
                         </div>
@@ -715,7 +868,7 @@ export default function BuilderPage() {
                     </div>
                     {/* Strategic Gap Report */}
                     {matchResult.gapReport && (matchResult.gapReport.criticalGaps?.length > 0 || matchResult.gapReport.optimizationGaps?.length > 0 || matchResult.gapReport.bonusMatches?.length > 0) && (
-                      <div className="space-y-2 pt-2 border-t border-slate-700/50">
+                      <div className="space-y-2 pt-2 border-t border-slate-200">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Strategic Gap Report</p>
                         {matchResult.gapReport.criticalGaps?.length > 0 && (
                           <div>
@@ -739,22 +892,22 @@ export default function BuilderPage() {
                         )}
                         {matchResult.gapReport.bonusMatches?.length > 0 && (
                           <div>
-                            <p className="text-[10px] text-emerald-400/90 mb-1">Bonus Matches</p>
+                            <p className="text-[10px] text-neonGreen/90 mb-1">Bonus Matches</p>
                             <ul className="space-y-0.5 text-[11px] text-slate-400">
                               {matchResult.gapReport.bonusMatches.map((g, i) => (
-                                <li key={i} className="flex gap-2"><span className="text-emerald-400 shrink-0">•</span><span>{g}</span></li>
+                                <li key={i} className="flex gap-2"><span className="text-neonGreen shrink-0">•</span><span>{g}</span></li>
                               ))}
                             </ul>
                           </div>
                         )}
                       </div>
                     )}
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-surgicalTeal font-medium">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-neonGreen font-medium">
                       Critical Keywords
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {(matchResult.foundKeywords ?? []).slice(0, 12).map((kw, i) => (
-                        <span key={`f-${i}`} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                        <span key={`f-${i}`} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] text-neonGreen">
                           ✅ {kw}
                         </span>
                       ))}
@@ -770,7 +923,7 @@ export default function BuilderPage() {
                         <ul className="space-y-1 text-[11px] text-slate-400">
                           {(matchResult.surgicalAdjustments ?? []).map((adj, i) => (
                             <li key={i} className="flex gap-2">
-                              <span className="text-surgicalTeal shrink-0">•</span>
+                              <span className="text-neonGreen shrink-0">•</span>
                               <span>{adj}</span>
                             </li>
                           ))}
@@ -783,7 +936,7 @@ export default function BuilderPage() {
                           type="button"
                           onClick={handleTailorResume}
                           disabled={tailorLoading}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-3 py-1.5 text-[11px] font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/10 px-3 py-1.5 text-[11px] font-medium text-neonGreen hover:bg-surgicalTeal/20 disabled:opacity-50"
                         >
                           {tailorLoading ? (
                             <><span className="surgical-pulse" aria-hidden /> Tailoring…</>
@@ -804,7 +957,7 @@ export default function BuilderPage() {
                           <button
                             type="button"
                             onClick={handleDivineUnlock}
-                            className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-surgicalTeal text-[11px] font-medium hover:bg-surgicalTeal/25"
+                            className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-full border border-surgicalTeal/70 bg-surgicalTeal/15 text-neonGreen text-[11px] font-medium hover:bg-surgicalTeal/25"
                           >
                             <Lock className="h-3 w-3" />
                             Executive Pass
@@ -913,7 +1066,7 @@ export default function BuilderPage() {
               className="rounded-2xl border border-white/10 bg-slate-900 shadow-2xl max-w-md w-full p-6 text-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center bg-surgicalTeal/20 text-surgicalTeal">
+              <div className="rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center bg-surgicalTeal/20 text-neonGreen">
                 <Coins className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-semibold text-slate-100 mb-2">Surgical Refill</h3>
@@ -934,7 +1087,7 @@ export default function BuilderPage() {
                     setShowRefillModal(false);
                     router.push("/?refill=1");
                   }}
-                  className="px-5 py-2 rounded-lg bg-surgicalTeal text-slate-900 font-medium hover:bg-surgicalTeal/90 text-sm"
+                  className="px-5 py-2 rounded-lg bg-surgicalTeal text-black font-bold hover:bg-surgicalTeal/90 text-sm"
                 >
                   Choose a refill pack
                 </button>

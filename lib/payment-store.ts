@@ -2,7 +2,7 @@
  * In-memory store for verified payment references.
  * In production, replace with Redis or DB.
  */
-export type PurchaseTier = "single" | "career" | "closer" | "business" | "all_access" | "credits" | "refill_minor" | "refill_standard" | "refill_executive";
+export type PurchaseTier = "single" | "career" | "closer" | "business" | "all_access" | "credits" | "refill_minor" | "refill_standard" | "refill_executive" | "surgical_refill";
 
 type PendingRecord = {
   tier: PurchaseTier;

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Scissors } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useSubscription } from "@/hooks/useSubscription";
 
 function getOrigin(): string {
   if (typeof window !== "undefined") return window.location.origin;
@@ -14,8 +15,9 @@ function getRedirectUrl(): string {
   return `${getOrigin()}/`;
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const { session, loading: subLoading } = useSubscription();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,6 +29,13 @@ export default function LoginPage() {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+
+  // If a session already exists (including after Google OAuth), redirect away from login.
+  useEffect(() => {
+    if (!subLoading && session) {
+      router.replace("/");
+    }
+  }, [subLoading, session, router]);
 
   useEffect(() => {
     if (searchParams.get("reset") === "success") {
@@ -43,10 +52,14 @@ export default function LoginPage() {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
       if (data.session) {
-        await fetch("/api/auth/ensure-user-asset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session.access_token}` },
-        });
+        try {
+          await fetch("/api/auth/ensure-user-asset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session.access_token}` },
+          });
+        } catch {
+          // don't block login on profile-ensure failure
+        }
         router.push("/");
         router.refresh();
       }
@@ -117,19 +130,21 @@ export default function LoginPage() {
   if (magicSent) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-        <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 text-center shadow-card">
+        <div className="w-full max-w-sm rounded-3xl glass-auth-card p-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-            <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+              <Scissors className="h-6 w-6 text-emerald-600" aria-hidden />
+            </div>
+            <h1 className="text-xl font-semibold text-[#0c0a09] font-display">Resume Surgeon</h1>
           </div>
-          <p className="text-sm font-medium text-slate-200 mb-1">Check your email</p>
+          <p className="text-sm font-medium text-slate-800 mb-1">Check your email</p>
           <p className="text-xs text-slate-500 mb-6">
-            We sent a sign-in link to <span className="text-slate-300">{email}</span>. Click the link to sign in securely.
+            We sent a sign-in link to <span className="text-slate-700">{email}</span>. Click the link to sign in securely.
           </p>
           <button
             type="button"
             onClick={() => setMagicSent(false)}
-            className="text-sm text-surgicalTeal hover:underline focus:outline-none focus:ring-2 focus:ring-surgicalTeal/30 rounded"
+            className="text-sm text-emerald-600 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500/30 rounded"
           >
             Use password instead
           </button>
@@ -141,19 +156,21 @@ export default function LoginPage() {
   if (forgotSent) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-        <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 text-center shadow-card">
+        <div className="w-full max-w-sm rounded-3xl glass-auth-card p-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-            <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+              <Scissors className="h-6 w-6 text-emerald-600" aria-hidden />
+            </div>
+            <h1 className="text-xl font-semibold text-[#0c0a09] font-display">Resume Surgeon</h1>
           </div>
-          <p className="text-sm font-medium text-slate-200 mb-1">Check your email</p>
+          <p className="text-sm font-medium text-slate-800 mb-1">Check your email</p>
           <p className="text-xs text-slate-500 mb-6">
-            We sent a password reset link to <span className="text-slate-300">{email}</span>. Click the link to set a new password.
+            We sent a password reset link to <span className="text-slate-700">{email}</span>. Click the link to set a new password.
           </p>
           <button
             type="button"
             onClick={() => { setForgotSent(false); setForgotMode(false); }}
-            className="text-sm text-surgicalTeal hover:underline focus:outline-none focus:ring-2 focus:ring-surgicalTeal/30 rounded"
+            className="text-sm text-emerald-600 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500/30 rounded"
           >
             Back to sign in
           </button>
@@ -165,12 +182,14 @@ export default function LoginPage() {
   if (forgotMode) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-        <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 shadow-card">
+        <div className="w-full max-w-sm rounded-3xl glass-auth-card p-8">
           <div className="flex items-center justify-center gap-2 mb-6">
-            <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-            <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+              <Scissors className="h-6 w-6 text-emerald-600" aria-hidden />
+            </div>
+            <h1 className="text-xl font-semibold text-[#0c0a09] font-display">Resume Surgeon</h1>
           </div>
-          <h2 className="text-sm font-medium text-slate-300 uppercase tracking-wider mb-4">
+          <h2 className="text-sm font-medium text-slate-700 uppercase tracking-wider mb-4">
             Reset password
           </h2>
           <p className="text-xs text-slate-500 mb-4">
@@ -181,7 +200,7 @@ export default function LoginPage() {
             className="space-y-4"
           >
             <div>
-              <label htmlFor="forgot-email" className="block text-xs text-slate-400 mb-1.5">
+              <label htmlFor="forgot-email" className="block text-xs text-slate-600 mb-1.5">
                 Email
               </label>
               <input
@@ -192,14 +211,14 @@ export default function LoginPage() {
                 required
                 placeholder="you@example.com"
                 autoComplete="email"
-                className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/60 focus:outline-none focus:ring-2 focus:ring-surgicalTeal/20"
+                className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               />
             </div>
             {error && <p className="text-xs text-rose-400" role="alert">{error}</p>}
             <button
               type="submit"
               disabled={forgotLoading}
-              className="w-full rounded-xl border border-surgicalTeal/60 bg-surgicalTeal/10 py-2.5 text-sm font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50 transition-colors"
+              className="w-full rounded-xl border border-surgicalTeal/60 bg-surgicalTeal/10 py-2.5 text-sm font-medium text-emerald-600 hover:bg-surgicalTeal/20 disabled:opacity-50 transition-colors"
             >
               {forgotLoading ? "Sending…" : "Send reset link"}
             </button>
@@ -207,7 +226,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => { setForgotMode(false); setError(null); }}
-            className="mt-4 w-full text-center text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            className="mt-4 w-full text-center text-xs text-slate-500 hover:text-slate-700 transition-colors"
           >
             Back to sign in
           </button>
@@ -218,24 +237,26 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center app-bg px-4 font-body">
-      <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/10 p-8 shadow-card">
+      <div className="w-full max-w-sm rounded-2xl glass-auth-card border border-white/20 p-8 shadow-card">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <Scissors className="h-8 w-8 text-surgicalTeal" aria-hidden />
-          <h1 className="text-xl font-medium text-slate-50">Resume Surgeon</h1>
+          <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
+            <Scissors className="h-6 w-6 text-emerald-600" aria-hidden />
+          </div>
+          <h1 className="text-xl font-semibold text-[#0c0a09] font-display">Resume Surgeon</h1>
         </div>
-        <h2 className="text-sm font-medium text-slate-300 uppercase tracking-wider mb-4">
+        <h2 className="text-sm font-medium text-slate-700 uppercase tracking-wider mb-4">
           Sign in
         </h2>
 
         {success && (
-          <p className="mb-4 text-xs text-emerald-400 bg-emerald-400/10 rounded-lg px-3 py-2" role="status">
+          <p className="mb-4 text-xs text-[#020617] bg-emerald-400/10 rounded-lg px-3 py-2" role="status">
             {success}
           </p>
         )}
 
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div>
-            <label htmlFor="login-email" className="block text-xs text-slate-400 mb-1.5">
+            <label htmlFor="login-email" className="block text-sm font-medium text-slate-700 mb-1.5">
               Email
             </label>
             <input
@@ -246,11 +267,11 @@ export default function LoginPage() {
               required
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/60 focus:outline-none focus:ring-2 focus:ring-surgicalTeal/20"
+              className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
           <div>
-            <label htmlFor="login-password" className="block text-xs text-slate-400 mb-1.5">
+            <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 mb-1.5">
               Password
             </label>
             <input
@@ -260,13 +281,13 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete="current-password"
-              className="w-full rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-surgicalTeal/60 focus:outline-none focus:ring-2 focus:ring-surgicalTeal/20"
+              className="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
             <div className="mt-1.5 flex justify-end">
               <button
                 type="button"
                 onClick={() => { setForgotMode(true); setError(null); setSuccess(null); }}
-                className="text-[10px] text-slate-500 hover:text-surgicalTeal transition-colors focus:outline-none focus:ring-2 focus:ring-surgicalTeal/30 rounded"
+                className="text-sm text-slate-600 hover:text-emerald-600 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 rounded"
               >
                 Forgot password?
               </button>
@@ -276,7 +297,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl border border-surgicalTeal/60 bg-surgicalTeal/10 py-2.5 text-sm font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50 transition-colors"
+            className="w-full rounded-xl btn-primary-surgical py-3 text-base font-semibold disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
@@ -295,7 +316,7 @@ export default function LoginPage() {
           type="button"
           disabled={magicLoading || !email.trim()}
           onClick={handleMagicLink}
-          className="w-full rounded-xl border border-white/10 bg-slate-800/40 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800/60 disabled:opacity-50 transition-colors"
+          className="w-full rounded-xl btn-secondary-surgical py-3 text-base font-semibold disabled:opacity-50"
         >
           {magicLoading ? "Sending…" : "Send Magic Link"}
         </button>
@@ -303,7 +324,7 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={handleGoogleSignIn}
-          className="mt-3 w-full rounded-xl border border-white/10 bg-slate-800/40 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-800/60 transition-colors flex items-center justify-center gap-2"
+          className="mt-3 w-full rounded-xl btn-secondary-surgical py-3 text-base font-semibold flex items-center justify-center gap-2"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -314,13 +335,21 @@ export default function LoginPage() {
           Sign in with Google
         </button>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
+        <p className="mt-4 text-center text-sm text-slate-600">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-surgicalTeal hover:underline font-medium">
+          <Link href="/signup" className="text-emerald-600 hover:underline font-semibold">
             Sign up
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen app-bg flex items-center justify-center"><div className="text-slate-600">Loading…</div></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

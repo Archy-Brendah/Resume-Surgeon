@@ -27,6 +27,9 @@ async function getProfile(username: string): Promise<ViewProfile | null> {
     experience: typeof snapshot.experience === "string" ? snapshot.experience : undefined,
     sharpened: typeof snapshot.sharpened === "string" ? snapshot.sharpened : undefined,
     skills: typeof snapshot.skills === "string" ? snapshot.skills : undefined,
+    education: typeof snapshot.education === "string" ? snapshot.education : undefined,
+    projects: typeof snapshot.projects === "string" ? snapshot.projects : undefined,
+    certification: typeof snapshot.certification === "string" ? snapshot.certification : undefined,
     is_paid: Boolean(data.is_paid),
     noindex: (data as { noindex?: boolean }).noindex !== false,
   };

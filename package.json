@@ -33,12 +33,17 @@
     "groq-sdk": "^0.37.0",
     "lucide-react": "^0.577.0",
     "next": "^16.1.6",
+    "pdfjs-serverless": "^1.1.0",
     "postcss": "^8.5.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-to-print": "^3.3.0",
     "resend": "^6.9.3",
+    "sonner": "^1.7.1",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16"
   }
 }

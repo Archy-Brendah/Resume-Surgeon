@@ -19,9 +19,8 @@ export type LivePriceResult = {
 
 /**
  * Fetches live price from resume_surgeon.pricing_config.
- * If current_paid_count < user_limit → early_bird_price (e.g. 999),
- * otherwise → standard_price (e.g. 2500).
- * You can change user_limit, early_bird_price, standard_price in Supabase Dashboard.
+ * If current_paid_count < user_limit → show early_bird_price (999 KSH),
+ * else → show standard_price (1499 KSH).
  */
 export async function getLivePrice(): Promise<LivePriceResult> {
   const fallback: LivePriceResult = {
@@ -29,7 +28,7 @@ export async function getLivePrice(): Promise<LivePriceResult> {
     isEarlyBird: true,
     slotsRemaining: 100,
     userLimit: 100,
-    standardPrice: 2500,
+    standardPrice: 1499,
     earlyBirdPrice: 999,
     currentPaidCount: 0,
   };
@@ -54,7 +53,7 @@ export async function getLivePrice(): Promise<LivePriceResult> {
     const userLimit = Number(data.user_limit) || 100;
     const currentPaidCount = Number(data.current_paid_count) || 0;
     const earlyBirdPrice = Number(data.early_bird_price) ?? 999;
-    const standardPrice = Number(data.standard_price) ?? 2500;
+    const standardPrice = Number(data.standard_price) ?? 1499;
 
     const isEarlyBird = currentPaidCount < userLimit;
     const price = isEarlyBird ? earlyBirdPrice : standardPrice;

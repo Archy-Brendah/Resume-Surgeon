@@ -1,88 +1,208 @@
 @import "tailwindcss";
 @config "../tailwind.config.mjs";
 
-/* ——— Design system: Deep Slate & Surgical Teal (single source of truth) ——— */
+/* ——— Surgical Executive Design System ——— */
 :root {
-  --bg-deep: #0f172a;
-  --bg-surface: #0f172a;
-  --bg-elevated: #1e293b;
-  --bg-muted: rgba(30, 41, 59, 0.6);
-  --accent: #2dd4bf;
-  --accent-dim: rgba(45, 212, 191, 0.15);
-  --accent-glow: rgba(45, 212, 191, 0.25);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.1);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
+  /* Canvas & surfaces */
+  --bg-canvas: #F8FAFC;
+  --bg-deep: #F8FAFC;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-muted: rgba(248, 250, 252, 0.9);
+  /* Sidebar */
+  --sidebar-bg: #020617;
+  --sidebar-icon: 100 116 139; /* slate-500 */
+  --sidebar-active: #F59E0B;
+  /* Typography */
+  --text-heading: #0F172A;
+  --text-body: #475569;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
   --text-muted: #64748b;
+  /* Accent & buttons */
+  --accent: #10b981;
+  --accent-dim: rgba(5, 150, 105, 0.08);
+  --accent-glow: rgba(5, 150, 105, 0.15);
+  --btn-primary-from: #064E3B;
+  --btn-primary-to: #10B981;
+  /* Structure */
+  --nav-deep: #020617;
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-default: 241 245 249; /* slate-100 */
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.25rem;
   --radius-2xl: 1.5rem;
-  --shadow-card: 0 4px 24px -4px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 32px -4px var(--accent-glow);
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-3xl: 1.75rem;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 8px 30px rgb(0 0 0 / 0.04);
+  --shadow-surgical-card: 0 8px 30px rgb(0 0 0 / 0.04);
+  --shadow-elevated: 0 8px 30px -8px rgba(0, 0, 0, 0.08), 0 20px 60px -20px rgba(0, 0, 0, 0.06);
+  --shadow-surgical: var(--shadow-card);
+  --shadow-glow: 0 0 40px -8px var(--accent-glow);
+  --transition-fast: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  --york-yellow: #d4a853;
+  --york-yellow-dim: rgba(212, 168, 83, 0.12);
+  --york-gold: #F59E0B;
+  --york-gold-glow: rgba(245, 158, 11, 0.35);
+  --surgical-green: #00ff88;
+  --surgical-green-dark: #0d4d2d;
+  --surgical-green-glow: rgba(0, 255, 136, 0.35);
+  --sidebar-width: 64px;
+  --sidebar-width-expanded: 240px;
+  --topbar-height: 48px;
+}
+
+/* ——— Surgical Executive: Sidebar — Obsidian, icons slate-500, active = York Gold + 2px vertical bar */
+.bar-sidebar {
+  background: var(--sidebar-bg);
+  position: relative;
+  border-right: none;
+}
+.bar-sidebar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.7) 0%, rgba(16, 185, 129, 0.2) 50%, transparent 100%);
+  pointer-events: none;
+}
+/* Glassmorphism topbar — expensive frosted bar */
+.bar-topbar {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgb(241 245 249); /* border-slate-100 */
+}
+
+.workspace-deep-space {
+  background: transparent;
+}
+
+/* Sidebar nav: active = subtle bg-emerald-500/5 + York Gold icon/label */
+.sidebar-nav-icon-default {
+  color: rgb(100 116 139) !important; /* slate-500 */
+}
+.sidebar-nav-active {
+  background: rgba(16, 185, 129, 0.05); /* bg-emerald-500/5 */
+  color: var(--york-gold);
+  border-left: 2px solid var(--york-gold);
+  box-shadow: none;
+}
+.sidebar-nav-active .sidebar-nav-icon,
+.sidebar-nav-active .sidebar-nav-label {
+  color: var(--york-gold) !important;
 }
 
 body {
-  @apply font-body text-slate-100 antialiased;
-  background-color: var(--bg-deep);
+  @apply font-body antialiased;
+  font-size: 15px;
+  line-height: 1.625;
+  color: var(--text-body);
+  background-color: var(--bg-canvas);
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Night Shift: elite dark mode */
-.bg-slate-950 {
-  background-color: var(--bg-deep);
+/* Surgical Executive: Canvas (Cool Ghost White) */
+.bg-slate-950,
+.bg-canvas {
+  background-color: var(--bg-canvas);
 }
 
-/* App background: subtle gradient for depth */
 .app-bg {
-  background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(45, 212, 191, 0.06), transparent 50%),
-    var(--bg-deep);
+  background-color: var(--bg-canvas);
+  min-height: 100vh;
 }
 
-/* Glassmorphism: sidebar and cards (premium) */
+/* ——— Typography: Inter/Geist ——— */
+.heading-surgical {
+  font-family: var(--font-inter), "Inter", "Geist", system-ui, sans-serif;
+  color: var(--text-heading);
+  font-weight: 600;
+}
+.body-surgical {
+  font-family: var(--font-inter), "Inter", "Geist", system-ui, sans-serif;
+  color: var(--text-body);
+  font-weight: 400;
+  line-height: 1.625;
+}
+
+/* Glass panel — refined frosted glass */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border-default);
-  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-elevated);
 }
 
+/* ——— Surgical Executive: Cards (Surface) — bg-white, soft shadow, 1px border-slate-100 */
+.card-surface {
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-surgical-card);
+  border: 1px solid rgb(241 245 249);
+  border-radius: var(--radius-xl);
+  transition: box-shadow var(--transition-smooth);
+}
+.card-surface:hover {
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.06);
+}
+
+/* Premium cards — align with Surgical Executive surface */
 .glass-card {
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  background: var(--bg-surface);
+  border: 1px solid rgb(241 245 249);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-surgical-card);
+  transition: box-shadow var(--transition-smooth), transform var(--transition-smooth);
+}
+.glass-card:hover {
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.06);
 }
 .glass-card:focus-within {
-  border-color: rgba(45, 212, 191, 0.3);
-  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.1);
+  box-shadow: var(--shadow-surgical-card), 0 0 0 1px rgba(16, 185, 129, 0.15);
 }
 
-/* Auth cards: glassmorphism with thin white border (Surgical Auth design system) */
+/* Surgical card — surface style */
+.surgical-card {
+  background: var(--bg-surface);
+  border: 1px solid rgb(241 245 249);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-surgical-card);
+  transition: box-shadow var(--transition-smooth);
+}
+.surgical-card:hover {
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.06);
+}
+
+/* Auth cards — premium elevated */
 .glass-auth-card {
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-elevated), 0 0 0 1px rgba(0, 0, 0, 0.02);
 }
 
 .resume-surface {
-  background: radial-gradient(circle at top left, rgba(45, 212, 191, 0.08), transparent),
-    radial-gradient(circle at bottom right, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-top: 2px solid var(--york-yellow);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .resume-paper {
-  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.03), transparent),
-    #f9fafb;
+  background: radial-gradient(circle at top, rgba(0, 0, 0, 0.02), transparent),
+    #fafaf9;
 }
 
 /* ——— Bespoke Executive Resume ($500 typography) ——— */
@@ -108,15 +228,16 @@ body {
   color: #0f172a;
 }
 .exec-accent {
-  color: #2dd4bf;
+  color: #10b981;
 }
 .exec-divider {
   height: 1px;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    #2dd4bf 15%,
-    #2dd4bf 85%,
+    #10b981 15%,
+    #d4a853 50%,
+    #10b981 85%,
     transparent 100%
   );
   opacity: 0.9;
@@ -125,7 +246,7 @@ body {
   flex-shrink: 0;
   width: 0.4em;
   height: 0;
-  border-bottom: 2px solid #2dd4bf;
+  border-bottom: 2px solid #10b981;
   margin-top: 0.65em;
   margin-right: 0.5rem;
 }
@@ -135,7 +256,7 @@ body {
   font-size: 9pt;
 }
 .exec-contact-dot {
-  color: #2dd4bf;
+  color: #10b981;
   font-weight: 700;
   user-select: none;
 }
@@ -178,6 +299,59 @@ body {
 .resume-section-block {
   break-inside: avoid;
   page-break-inside: avoid;
+}
+
+/* Professional resume layout: best-in-class hierarchy, spacing, print-ready */
+.resume-doc {
+  --resume-text: #0f172a;
+  --resume-muted: #475569;
+  --resume-accent: #0d9488;
+  /* Consistent section spacing for beautiful, professional order */
+  line-height: 1.5;
+}
+.resume-doc .exec-name {
+  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+}
+.resume-doc .exec-section-header {
+  font-size: 9.5pt;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.4rem;
+  color: var(--resume-text);
+  font-weight: 600;
+}
+.resume-doc .exec-divider {
+  margin-bottom: 0.6rem;
+}
+.resume-doc .resume-section-block {
+  margin-bottom: 1.25rem;
+}
+.resume-doc .resume-section-block:last-child {
+  margin-bottom: 0;
+}
+.resume-doc .resume-bullet-list {
+  margin-top: 0.25rem;
+}
+.resume-doc .resume-bullet-list li {
+  margin-bottom: 0.4rem;
+  line-height: 1.45;
+}
+.resume-doc .resume-bullet-text {
+  font-size: 9.5pt;
+  color: var(--resume-text);
+}
+.resume-doc .exec-body {
+  font-size: 9.5pt;
+  line-height: 1.5;
+  color: var(--resume-text);
+}
+@media print {
+  .resume-doc .resume-section-block {
+    margin-bottom: 0.65rem;
+  }
+  .resume-doc .resume-bullet-list li {
+    margin-bottom: 0.25rem;
+  }
 }
 
 .resume-body {
@@ -334,9 +508,45 @@ body {
 }
 
 @media print {
+  .proposal-print-wrapper {
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
   .proposal-print-wrapper > * {
     box-shadow: none !important;
     border-radius: 0 !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+  .proposal-print-page,
+  .tender-doc-page,
+  .proposal-cover {
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+  .resume-paper,
+  .theme-innovator .resume-paper {
+    background: #ffffff !important;
+  }
+  .proposal-print-wrapper table thead tr,
+  .proposal-print-wrapper .bg-slate-100 {
+    background: #ffffff !important;
+  }
+  .proposal-print-wrapper table,
+  .proposal-print-wrapper table th,
+  .proposal-print-wrapper table td {
+    border-color: #e2e8f0 !important;
+  }
+  .proposal-print-wrapper .proposal-section,
+  .proposal-print-wrapper .proposal-cta {
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
   }
   .proposal-cover {
     page-break-after: always;
@@ -345,8 +555,22 @@ body {
   .proposal-page-header {
     color: #64748b;
   }
+  /* Chronological serialization (Page X of Y) on every proposal page footer */
   .proposal-page-number::after {
-    content: " · Page " counter(page) " of " counter(pages);
+    content: " Page " counter(page) " of " counter(pages);
+    font-size: 10px;
+    font-weight: 500;
+    color: #475569;
+  }
+  /* Kenyan Tender Document: ORIGINAL/COPY header, page serialization critical */
+  .tender-doc-header {
+    color: #334155 !important;
+    font-weight: 700;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .tender-doc-page {
+    padding-top: 2rem; /* room for ORIGINAL/COPY header */
   }
 }
 
@@ -432,45 +656,50 @@ body {
   }
 }
 
-/* Midnight & Gold — Firm Proposal luxury theme */
+/* Flashing red alert for high disqualification risk */
+@keyframes flash-red-alert {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { opacity: 0.9; box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.3); }
+}
+.animate-flash-red {
+  animation: flash-red-alert 1.5s ease-in-out infinite;
+}
+
+/* Firm Proposal luxury — Light Frost with York Yellow accent */
 .theme-firm-luxury {
-  --accent: #d4af37;
-  --accent-dim: rgba(212, 175, 55, 0.15);
-  --bg-midnight: #0a0a0f;
+  --accent: #f4c430;
+  --accent-dim: rgba(244, 196, 48, 0.15);
+  --bg-midnight: #f8fafc;
 }
 .theme-firm-luxury .text-surgicalTeal,
+.theme-firm-luxury .text-neonGreen,
+.theme-firm-luxury .text-neonGreenDark,
 .theme-firm-luxury [class*="surgicalTeal"] {
-  color: var(--accent) !important;
+  color: var(--york-yellow) !important;
 }
 .theme-firm-luxury .border-surgicalTeal\/70,
 .theme-firm-luxury .border-surgicalTeal\/60 {
-  border-color: rgba(212, 175, 55, 0.5) !important;
+  border-color: rgba(244, 196, 48, 0.6) !important;
 }
 .theme-firm-luxury .bg-surgicalTeal\/10 {
-  background-color: var(--accent-dim) !important;
+  background-color: var(--york-yellow-dim) !important;
 }
 .theme-firm-luxury .bg-slate-950 {
   background-color: var(--bg-midnight) !important;
 }
 
-/* Low Light — reduced eye strain */
+/* Low Light — softer contrast (still light) */
 .low-light {
-  --bg-soft: #1a1f2e;
-  --text-soft: #94a3b8;
+  --bg-soft: #f5f3ef;
+  --text-soft: #78716c;
 }
 .low-light body,
-.low-light.bg-slate-950 {
-  background-color: var(--bg-soft) !important;
-}
-.low-light .text-slate-100 {
-  color: #cbd5e1 !important;
-}
-.low-light .text-slate-400 {
-  color: var(--text-soft) !important;
+.low-light .app-bg {
+  background: var(--bg-soft) !important;
 }
 .low-light .glass-panel,
 .low-light .glass-card {
-  background: rgba(26, 31, 46, 0.7) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
 }
 
 /* Scanning laser glimmer — travels across text */
@@ -490,11 +719,11 @@ body {
   background: linear-gradient(
     180deg,
     transparent,
-    rgba(45, 212, 191, 0.9),
-    rgba(45, 212, 191, 0.9),
+    rgba(16, 185, 129, 0.9),
+    rgba(16, 185, 129, 0.9),
     transparent
   );
-  box-shadow: 0 0 20px rgba(45, 212, 191, 0.8);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.7);
   animation: laser-sweep 0.8s ease-in-out forwards;
 }
 @keyframes laser-sweep {
@@ -512,31 +741,79 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 .badge-glow {
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.4);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.45);
 }
 
-/* Bento — rounded digestible blocks (premium) */
+/* Show preview button — subtle pulse to draw attention */
+@keyframes show-preview-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.25); }
+  50% { box-shadow: 0 0 32px rgba(16, 185, 129, 0.4); }
+}
+
+/* Bento — Premium elevated cards */
 .bento-card {
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border-subtle);
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(12px);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-top: 2px solid var(--york-yellow);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition-smooth), transform var(--transition-smooth);
 }
 .bento-card:hover {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.55);
+  box-shadow: var(--shadow-elevated);
 }
 
-/* Premium form inputs: consistent focus ring (theme) */
+/* ——— Surgical Executive: Primary button — Deep Forest Green to Emerald gradient, rounded-xl, text-white */
+.btn-primary-surgical,
+.btn-glimmer {
+  background: linear-gradient(180deg, var(--btn-primary-from) 0%, var(--btn-primary-to) 100%) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  font-size: 0.9375rem !important;
+  border: none !important;
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 14px -2px rgba(6, 78, 59, 0.35);
+  transition: box-shadow var(--transition-smooth), transform var(--transition-fast);
+}
+.btn-primary-surgical:hover:not(:disabled),
+.btn-glimmer:hover:not(:disabled) {
+  box-shadow: 0 6px 20px -4px rgba(6, 78, 59, 0.45);
+  transform: translateY(-1px);
+}
+
+/* Premium Secondary — York yellow ghost, black text */
+.btn-secondary-surgical {
+  background: transparent !important;
+  border: 2px solid var(--york-yellow) !important;
+  color: #1c1917 !important;
+  font-weight: 600 !important;
+  font-size: 0.9375rem !important;
+  transition: all var(--transition-smooth);
+}
+.btn-secondary-surgical:hover:not(:disabled) {
+  background: var(--york-yellow-dim) !important;
+  border-color: #e8c97a !important;
+  color: #0a0a0a !important;
+}
+
+/* Premium form inputs — readable, accessible */
 .input-premium {
-  @apply w-full rounded-xl border bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition-colors duration-150;
-  border-color: rgba(51, 65, 85, 0.8);
+  @apply w-full rounded-xl px-3 py-2.5 transition-all duration-200;
+  font-size: 1rem;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+}
+.input-premium::placeholder {
+  color: var(--text-muted);
 }
 .input-premium:focus {
   outline: none;
-  border-color: rgba(45, 212, 191, 0.5);
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.15);
 }
 
 /* Pill nav (active state) */
@@ -544,10 +821,10 @@ body {
   @apply rounded-full px-4 py-2 text-sm font-medium transition-all duration-200;
 }
 .nav-pill-active {
-  @apply bg-surgicalTeal/15 text-surgicalTeal border border-surgicalTeal/30;
+  @apply bg-neonGreen/15 text-neonGreenDark border border-neonGreen/40;
 }
 .nav-pill-inactive {
-  @apply text-slate-400 border border-transparent hover:text-slate-200 hover:bg-white/5;
+  @apply text-slate-600 border border-transparent hover:text-slate-900 hover:bg-white/50;
 }
 
 @media print {
@@ -569,7 +846,6 @@ body {
     border-radius: 0 !important;
     width: auto;
     min-height: auto;
-    page-break-after: always;
   }
 
   .resume-paper {
@@ -600,7 +876,6 @@ body {
     width: 100% !important;
     max-width: none !important;
     min-height: auto !important;
-    page-break-after: always;
     background: #fff !important;
   }
 

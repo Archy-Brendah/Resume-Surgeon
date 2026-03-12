@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+
+export const runtime = "edge";
+
 import {
   getPendingTier,
   getPendingUserId,
@@ -7,11 +10,11 @@ import {
   setPaymentVerified,
 } from "@/lib/payment-store";
 import type { PurchaseTier } from "@/lib/payment-store";
-import { setUserPaidServer, getUserIdByCheckoutId } from "@/lib/supabase-server";
+import { setUserPaidServer, getUserIdByCheckoutId, logRefillHistory, handleSurgicalTopup } from "@/lib/supabase-server";
 import { sendSuccessEmail } from "@/lib/success-email";
-import { incrementPaidCount } from "@/lib/pricing";
-import { refreshCreditsAfterPayment } from "@/lib/credits";
-import { addRefillCredits, getSuFromAmount } from "@/lib/refill";
+import { incrementPaidCount, getLivePrice } from "@/lib/pricing";
+import { addCreditsForPayment, calculateCreditsToAward, CREDIT_MAPPING } from "@/lib/refill";
+import { computeSuFromKsh } from "@/lib/surgical-refill-calc";
 import { syncPublicProfileIsPaid } from "@/lib/sync-public-profile-paid";
 import { claimWebhookIdempotency } from "@/lib/webhook-idempotency";
 
@@ -61,18 +64,38 @@ function getAmountPaid(payload: WebhookPayload): number | null {
  * - Replay: claimWebhookIdempotency(api_ref) ensures each checkout_id is processed only once; duplicate requests return 200 without applying credits.
  */
 export async function POST(request: NextRequest) {
+  const rawBody = await request.text();
+  let payload: WebhookPayload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ message: "Invalid JSON" }, { status: 400 });
+  }
+
+  /** IntaSend webhook verification: when challenge is present, return it immediately (before signature check). */
+  const challenge = payload?.challenge;
+  if (challenge != null && typeof challenge === "string") {
+    return NextResponse.json({ challenge: challenge.trim() });
+  }
+
   if (!INTASEND_SECRET) {
     return NextResponse.json({ message: "Webhook not configured" }, { status: 503 });
   }
 
-  if (WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { message: "Webhook signature not configured. Set INTASEND_WEBHOOK_SECRET in production." },
+        { status: 503 }
+      );
+    }
+    console.warn("[IntaSend Webhook] INTASEND_WEBHOOK_SECRET is not set. Set it in production to verify webhook authenticity.");
+  } else {
     const sentHeader = request.headers.get("x-intasend-signature") ?? request.headers.get("authorization");
     const received = sentHeader?.replace(/^Bearer\s+/i, "").trim() ?? "";
     if (!received || received !== WEBHOOK_SECRET) {
       return NextResponse.json({ message: "Invalid or missing webhook signature" }, { status: 401 });
     }
-  } else {
-    console.warn("[IntaSend Webhook] INTASEND_WEBHOOK_SECRET not set; webhook signature verification is disabled.");
   }
 
   if (WEBHOOK_IP_ALLOWLIST.length > 0) {
@@ -81,14 +104,6 @@ export async function POST(request: NextRequest) {
     if (!clientIp || !WEBHOOK_IP_ALLOWLIST.includes(clientIp)) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
-  }
-
-  const rawBody = await request.text();
-  let payload: WebhookPayload;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON" }, { status: 400 });
   }
 
   const event = (payload?.event ?? "").toString().toLowerCase();
@@ -119,56 +134,75 @@ export async function POST(request: NextRequest) {
     userId = await getUserIdByCheckoutId(apiRef);
   }
   const amountPaid = getAmountPaid(payload);
-  const isRefillAmount = amountPaid != null && getSuFromAmount(amountPaid) > 0;
-  const isRefillTier = tier === "refill_minor" || tier === "refill_standard" || tier === "refill_executive";
-  const isExecutiveByAmount = tier == null && amountPaid != null && [999, 1499].includes(Math.round(Number(amountPaid)));
 
-  if (userId) {
-    if ((isRefillTier || isRefillAmount) && !isExecutiveByAmount) {
-      const amount = amountPaid ?? (tier === "refill_minor" ? 299 : tier === "refill_standard" ? 999 : tier === "refill_executive" ? 2499 : 0);
-      if (amount > 0) {
-        try {
-          await addRefillCredits(userId, amount);
-        } catch (e) {
-          console.warn("[IntaSend Webhook] addRefillCredits failed:", e);
+  const MIN_REFILL_KES = 100;
+  const MAX_REFILL_KES = 500_000;
+
+  if (userId && amountPaid != null) {
+    const rounded = Math.round(Number(amountPaid));
+    if (!Number.isFinite(rounded) || rounded < 0) {
+      return NextResponse.json({ message: "Invalid amount" }, { status: 200 });
+    }
+
+    // Variable-amount Refill Balance (surgical_refill): use handle_surgical_topup
+    if (tier === "surgical_refill") {
+      if (rounded < MIN_REFILL_KES || rounded > MAX_REFILL_KES) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[IntaSend Webhook] surgical_refill amount out of range:", rounded);
+        }
+        return NextResponse.json({ message: "Amount out of range" }, { status: 200 });
+      }
+      try {
+        await handleSurgicalTopup(userId, rounded);
+        const creditsAdded = computeSuFromKsh(rounded);
+        await logRefillHistory(userId, rounded, creditsAdded, "topup", apiRef);
+      } catch (e) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[IntaSend Webhook] handleSurgicalTopup failed:", e);
         }
       }
     } else {
-      // Executive Pass or single purchase: set is_paid (server-side, RLS-safe) and grant SUs
-      if (tier !== "credits") {
-        const paidResult = await setUserPaidServer(userId);
-        if (!paidResult.ok) {
-          console.warn("[IntaSend Webhook] setUserPaidServer failed:", paidResult.error);
-        }
+      const livePricing = await getLivePrice();
+      const currentPaidCount = livePricing.currentPaidCount;
+      const userLimit = livePricing.userLimit;
+
+      // Executive Pass: 999 when current_paid_count < user_limit, else 1499
+      const isInitialEarlyBird = currentPaidCount < userLimit && rounded === CREDIT_MAPPING.INITIAL_EARLY_BIRD.price;
+      const isInitialStandard = currentPaidCount >= userLimit && rounded === CREDIT_MAPPING.INITIAL_STANDARD.price;
+      const isInitialFullAccess = isInitialEarlyBird || isInitialStandard;
+
+      const creditsToAward = calculateCreditsToAward(amountPaid, currentPaidCount, userLimit);
+      if (creditsToAward > 0) {
         try {
-          await syncPublicProfileIsPaid(userId);
+          await addCreditsForPayment(userId, amountPaid, currentPaidCount, userLimit);
+          await logRefillHistory(
+            userId,
+            rounded,
+            creditsToAward,
+            isInitialFullAccess ? "executive" : "topup",
+            apiRef
+          );
         } catch (e) {
-          console.warn("[IntaSend Webhook] syncPublicProfileIsPaid failed (portfolio PDF unlock may require re-save):", e);
+          console.warn("[IntaSend Webhook] addCreditsForPayment failed:", e);
         }
       }
-      const execAmount = amountPaid != null ? amountPaid : 999;
-      const suToAdd = getSuFromAmount(execAmount);
-      if (suToAdd > 0) {
-        try {
-          await addRefillCredits(userId, execAmount);
-        } catch (e) {
-          console.warn("[IntaSend Webhook] addRefillCredits failed:", e);
-        }
-      } else {
-        try {
-          await refreshCreditsAfterPayment(userId);
-        } catch (e) {
-          console.warn("[IntaSend Webhook] refreshCreditsAfterPayment failed:", e);
-        }
+
+      if (isInitialFullAccess && tier !== "credits") {
+      const paidResult = await setUserPaidServer(userId);
+      if (!paidResult.ok) {
+        console.warn("[IntaSend Webhook] setUserPaidServer failed:", paidResult.error);
+      }
+      try {
+        await syncPublicProfileIsPaid(userId);
+      } catch (e) {
+        console.warn("[IntaSend Webhook] syncPublicProfileIsPaid failed (portfolio PDF unlock may require re-save):", e);
+      }
+      try {
+        await incrementPaidCount();
+      } catch (e) {
+        console.warn("[IntaSend Webhook] incrementPaidCount failed (payment still applied):", e);
       }
     }
-  }
-
-  if (tier !== "credits" && !isRefillTier) {
-    try {
-      await incrementPaidCount();
-    } catch (e) {
-      console.warn("[IntaSend Webhook] incrementPaidCount failed (payment still applied):", e);
     }
   }
 

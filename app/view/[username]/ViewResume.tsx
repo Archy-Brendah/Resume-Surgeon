@@ -11,6 +11,9 @@ export type ViewProfile = {
   experience?: string;
   sharpened?: string;
   skills?: string;
+  education?: string;
+  projects?: string;
+  certification?: string;
   is_paid: boolean;
   noindex: boolean;
 };
@@ -24,6 +27,9 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
   const linkedin = profile.profileUrl?.trim() || "";
   const body = profile.sharpened || profile.experience || "";
   const skills = profile.skills || "";
+  const education = profile.education || "";
+  const projects = profile.projects || "";
+  const certification = profile.certification || "";
   const bullets = body ? body.split("\n").filter((l) => l.trim()) : [];
 
   const handleCopyEmail = () => {
@@ -44,10 +50,10 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
           body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #0f172a; padding: 24px; }
           .exec-name { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 28pt; }
           .exec-section-header { font-family: 'Playfair Display', serif; text-transform: uppercase; letter-spacing: 0.1em; font-size: 10pt; }
-          .exec-divider { height: 1px; background: linear-gradient(90deg, #2dd4bf, transparent); margin: 8px 0; }
+          .exec-divider { height: 1px; background: linear-gradient(90deg, #00ff88, transparent); margin: 8px 0; }
           ul { list-style: none; padding: 0; }
           li { display: flex; gap: 8px; margin-bottom: 6px; }
-          .bullet { color: #2dd4bf; }
+          .bullet { color: #00ff88; }
         </style>
       </head><body>
         ${content.innerHTML}
@@ -65,7 +71,7 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
         <div className="flex flex-wrap items-center justify-center gap-3 mb-6 pb-4 border-b border-slate-700">
           <a
             href="/"
-            className="text-[11px] uppercase tracking-wider text-slate-500 hover:text-surgicalTeal transition-colors"
+            className="text-[11px] uppercase tracking-wider text-slate-500 hover:text-neonGreen transition-colors"
           >
             Resume Surgeon
           </a>
@@ -74,7 +80,7 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
             type="button"
             onClick={handleCopyEmail}
             disabled={!email}
-            className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-neonGreen hover:bg-surgicalTeal/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Copy className="h-3.5 w-3.5" />
             Copy Email
@@ -84,7 +90,7 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
               href={linkedin.startsWith("http") ? linkedin : `https://${linkedin}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-surgicalTeal hover:bg-surgicalTeal/20"
+              className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-neonGreen hover:bg-surgicalTeal/20"
             >
               <Linkedin className="h-3.5 w-3.5" />
               Open LinkedIn
@@ -94,7 +100,7 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
             type="button"
             onClick={handlePrint}
             disabled={!profile.is_paid}
-            className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-surgicalTeal hover:bg-surgicalTeal/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-lg border border-surgicalTeal/50 bg-surgicalTeal/10 px-3 py-1.5 text-xs font-medium text-neonGreen hover:bg-surgicalTeal/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="h-3.5 w-3.5" />
             Download Official PDF
@@ -110,10 +116,10 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
         >
           <div className="text-center pb-5 mb-5 border-b border-slate-600/60">
             <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-50 mb-1">{name}</h1>
-            <p className="text-sm uppercase tracking-widest text-surgicalTeal mb-4">{title}</p>
+            <p className="text-sm uppercase tracking-widest text-neonGreen mb-4">{title}</p>
             <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-slate-400">
               {email && <span>{email}</span>}
-              {email && linkedin && <span className="text-surgicalTeal">•</span>}
+              {email && linkedin && <span className="text-neonGreen">•</span>}
               {linkedin && <span>{linkedin}</span>}
             </div>
           </div>
@@ -121,13 +127,13 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
           <div className="space-y-5">
             {(bullets.length > 0 || body.trim()) && (
               <div className="space-y-2">
-                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-surgicalTeal">Experience</h3>
+                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-neonGreen">Experience</h3>
                 <div className="h-px bg-gradient-to-r from-surgicalTeal/50 to-transparent mb-2" />
                 {bullets.length > 0 ? (
                   <ul className="space-y-2">
                     {bullets.map((line, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                        <span className="text-surgicalTeal mt-1.5 shrink-0">—</span>
+                        <span className="text-neonGreen mt-1.5 shrink-0">—</span>
                         <span className="leading-relaxed">{line.trim()}</span>
                       </li>
                     ))}
@@ -140,13 +146,37 @@ export function ViewResume({ profile }: { profile: ViewProfile }) {
 
             {skills && (
               <div className="space-y-2">
-                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-surgicalTeal">Skills</h3>
+                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-neonGreen">Skills</h3>
                 <div className="h-px bg-gradient-to-r from-surgicalTeal/50 to-transparent mb-2" />
                 <p className="text-sm text-slate-300 leading-relaxed">{skills}</p>
               </div>
             )}
 
-            {!body && !skills && (
+            {education && (
+              <div className="space-y-2">
+                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-neonGreen">Education</h3>
+                <div className="h-px bg-gradient-to-r from-surgicalTeal/50 to-transparent mb-2" />
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{education}</p>
+              </div>
+            )}
+
+            {projects && (
+              <div className="space-y-2">
+                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-neonGreen">Projects</h3>
+                <div className="h-px bg-gradient-to-r from-surgicalTeal/50 to-transparent mb-2" />
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{projects}</p>
+              </div>
+            )}
+
+            {certification && (
+              <div className="space-y-2">
+                <h3 className="font-display text-xs uppercase tracking-[0.2em] text-neonGreen">Certifications</h3>
+                <div className="h-px bg-gradient-to-r from-surgicalTeal/50 to-transparent mb-2" />
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{certification}</p>
+              </div>
+            )}
+
+            {!body && !skills && !education && !projects && !certification && (
               <p className="text-sm text-slate-500 italic">No content shared yet.</p>
             )}
           </div>

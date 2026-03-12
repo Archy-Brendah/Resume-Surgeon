@@ -4,6 +4,7 @@ import { recordPaymentAttempt } from "@/lib/supabase";
 import { getLivePrice } from "@/lib/pricing";
 import { getUserIdFromRequest } from "@/lib/credits";
 import { sanitizeShortField } from "@/lib/sanitize";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const INTASEND_SECRET = process.env.INTASEND_SECRET_KEY;
 const INTASEND_PUBLISHABLE = process.env.INTASEND_PUBLISHABLE_KEY;
@@ -29,6 +30,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!checkRateLimit(authUserId, "checkout", 10)) {
+    return NextResponse.json(
+      { error: "Too many payment attempts. Please try again in a minute." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const {
@@ -38,23 +46,56 @@ export async function POST(request: NextRequest) {
       amount: bodyAmount,
       name,
       product,
+      executivePrice,
     } = body as {
-      method: "MPESA" | "CARD";
+      method?: string;
       phone?: string;
       email?: string;
       amount?: number;
       name?: string;
-      product?: "all_access" | "credits";
+      product?: string;
+      /** User-chosen Executive Pass price: 999 (early bird) or 1499 (standard). */
+      executivePrice?: number;
     };
 
-    const isCreditsOnly = product === "credits";
+    const ALLOWED_PRODUCTS = ["all_access", "credits", "surgical_refill"] as const;
+    const productNorm = typeof product === "string" ? product.trim().toLowerCase() : undefined;
+    if (productNorm != null && productNorm !== "" && !ALLOWED_PRODUCTS.includes(productNorm as typeof ALLOWED_PRODUCTS[number])) {
+      return NextResponse.json(
+        { error: "Invalid product. Use all_access, credits, or surgical_refill." },
+        { status: 400 }
+      );
+    }
+
+    const isSurgicalRefill = productNorm === "surgical_refill";
+    const isCreditsOnly = productNorm === "credits";
     const live = await getLivePrice();
-    const rawAmount = isCreditsOnly
-      ? 499
-      : (typeof bodyAmount === "number" && bodyAmount > 0 ? bodyAmount : live.price);
     const MAX_AMOUNT_KES = 500_000;
-    const amount = Math.min(MAX_AMOUNT_KES, Math.max(1, Math.round(Number(rawAmount))));
-    const tier: PurchaseTier = isCreditsOnly ? "credits" : "all_access";
+    const MIN_REFILL_KES = 100;
+
+    let amount: number;
+    let tier: PurchaseTier;
+    if (isSurgicalRefill) {
+      const raw = typeof bodyAmount === "number" && Number.isFinite(bodyAmount) ? bodyAmount : 500;
+      amount = Math.min(MAX_AMOUNT_KES, Math.max(MIN_REFILL_KES, Math.round(Number(raw))));
+      tier = "surgical_refill";
+    } else if (isCreditsOnly) {
+      amount = 499;
+      tier = "credits";
+    } else {
+      // Executive Pass: allow user to choose 999 (early bird) or 1499 (standard)
+      const chosen = typeof executivePrice === "number" && Number.isFinite(executivePrice) ? Math.round(executivePrice) : null;
+      const earlyBirdPrice = 999;
+      const standardPrice = 1499;
+      if (chosen === earlyBirdPrice && (live.slotsRemaining ?? 0) > 0) {
+        amount = earlyBirdPrice;
+      } else if (chosen === standardPrice || chosen === earlyBirdPrice) {
+        amount = standardPrice;
+      } else {
+        amount = Math.min(MAX_AMOUNT_KES, Math.max(1, Math.round(Number(live.price ?? 999))));
+      }
+      tier = "all_access";
+    }
 
     const safeName = sanitizeShortField(name, 120);
     const safeEmail = typeof email === "string" ? sanitizeShortField(email, 254) : undefined;
@@ -187,7 +228,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid method." }, { status: 400 });
   } catch (e) {
-    console.error("Checkout error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Checkout error:", e);
+    }
     return NextResponse.json({ error: "Checkout failed." }, { status: 500 });
   }
 }

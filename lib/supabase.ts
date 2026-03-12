@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -8,12 +9,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /**
- * Supabase client. Loads NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY from .env.local.
- *
- * IMPORTANT: The global app schema is 'resume_surgeon'. All tables (e.g. user_assets)
- * live in this schema. Use resumeSurgeonDb() for every query so the client uses db_schema.
+ * Supabase client for browser. Uses cookies so the server can read the session.
+ * Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel env vars.
  */
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase: SupabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
 /** Global db_schema for Resume Surgeon — all app data uses this schema. */
 export const db_schema = "resume_surgeon" as const;
@@ -29,6 +28,10 @@ export type ProfileStatus = {
   is_paid: boolean;
   tier: string | null;
   ai_credits: number;
+  /** Total Surgical Units ever purchased by this user (from payments). */
+  total_credits_purchased?: number;
+  /** When true, user has unlimited SU and bypasses credit modals (beta/admin). */
+  is_beta_tester?: boolean;
 };
 
 /**
@@ -38,27 +41,38 @@ export type ProfileStatus = {
 export async function getProfileStatus(userId: string): Promise<ProfileStatus> {
   const { data, error } = await resumeSurgeonDb()
     .from("user_assets")
-    .select("is_paid, tier, ai_credits")
+    .select("is_paid, tier, ai_credits, total_credits_purchased, is_beta_tester")
     .eq("user_id", userId)
     .maybeSingle();
 
   if (error) {
     console.error("getProfileStatus error:", error);
-    return { is_paid: false, tier: "free", ai_credits: 0 };
+    return { is_paid: false, tier: "free", ai_credits: 0, total_credits_purchased: 0, is_beta_tester: false };
   }
 
   if (!data) {
-    return { is_paid: false, tier: "free", ai_credits: 0 };
+    return { is_paid: false, tier: "free", ai_credits: 0, total_credits_purchased: 0, is_beta_tester: false };
   }
 
-  const ai_credits = typeof (data as { ai_credits?: unknown }).ai_credits === "number"
-    ? Math.max(0, (data as { ai_credits: number }).ai_credits)
-    : 0;
+  const ai_credits =
+    typeof (data as { ai_credits?: unknown }).ai_credits === "number"
+      ? Math.max(0, (data as { ai_credits: number }).ai_credits)
+      : 0;
+
+  const total_credits_purchased_raw = (data as { total_credits_purchased?: unknown }).total_credits_purchased;
+  const total_credits_purchased =
+    typeof total_credits_purchased_raw === "number"
+      ? Math.max(0, total_credits_purchased_raw)
+      : 0;
+
+  const is_beta_tester = Boolean((data as { is_beta_tester?: unknown }).is_beta_tester);
 
   return {
     is_paid: Boolean(data.is_paid),
     tier: data.tier ?? "free",
     ai_credits,
+    total_credits_purchased,
+    is_beta_tester,
   };
 }
 
